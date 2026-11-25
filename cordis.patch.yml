@@ -1,0 +1,29 @@
+- insert:
+    - id: sensitive-guard
+      name: 'dsh-sensitive-guard'
+      config:
+        enabled: true
+        maskUserMessages: true
+        maskToolResults: true
+        maskDbCredentials: true
+        highRiskAlertAfter: 6
+        maxImagesPerTurn: 3
+        auditRequests: true
+        # Image analysis. 'auto' tries winrt on Windows, then python elsewhere.
+        ocr: true
+        imageBackend: auto
+        ocrLanguage: zh-Hans-CN
+        tesseractLanguage: chi_sim+eng
+        ocrTimeoutMs: 20000
+        ocrMaxImagesPerTurn: 3
+        redactImages: true
+        redactColor: '#000000'
+        detectAddresses: true
+        detectMedical: true
+        detectQr: true
+        markBinary: true
+        detectBypass: true
+        compressImages: true
+        compressMaxDimension: 2048
+        # false | 'internal' (non-public hosts only) | 'all'
+        maskUrls: false

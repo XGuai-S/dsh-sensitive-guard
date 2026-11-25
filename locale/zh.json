@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "敏感内容守卫",
+    "description": "在请求发往网关之前，把密钥串、身份隐私、住址、病历、系统凭证、本地路径、设备号、邮箱、IP、私有域名替换为占位符，并用 OCR 读取图片内的文字与二维码。Windows 上使用系统自带引擎，其他平台使用 Python 加 tesseract；没有识别引擎时仍会脱敏全部文本并涂改图片。不阻断任何请求：命中只提升日志等级。换机后运行 node ocr/selfcheck.mjs 自检。关闭插件行即可停用。",
+    "detail": "docs/DETAIL.zh.md"
+  }
+}

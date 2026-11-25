@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Sensitive content guard",
+    "description": "Masks secrets, identity data, addresses, medical records, system credentials, local paths, device ids, emails, IPs and private URLs before a request leaves for the gateway, and reads text and QR payloads inside images. Runs on Windows through the built-in OCR engine and elsewhere through Python plus tesseract; without a recognizer it still masks all text and redacts images. Nothing is blocked: a hit only raises the log level. Run node ocr/selfcheck.mjs after moving to another machine. Turn it off by disabling the plugin row.",
+    "detail": "docs/DETAIL.md"
+  }
+}

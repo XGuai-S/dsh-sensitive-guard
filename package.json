@@ -1,0 +1,67 @@
+{
+  "name": "dsh-sensitive-guard",
+  "version": "2.0.0",
+  "description": "Masks secrets, identity data, addresses, medical records, system credentials, local paths, device ids, emails, IPs and private URLs before a model request reaches the gateway; reads text and QR payloads inside images and covers sensitive lines irreversibly. Runs on Windows via the built-in WinRT engine and elsewhere via Python plus tesseract, degrading to text-only masking when no recognizer exists.",
+  "type": "module",
+  "license": "MIT",
+  "author": "XGuai-S",
+  "homepage": "https://github.com/XGuai-S/dsh-sensitive-guard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/XGuai-S/dsh-sensitive-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/XGuai-S/dsh-sensitive-guard/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./selfcheck": "./ocr/selfcheck.mjs"
+  },
+  "files": [
+    "index.js",
+    "ocr",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "test",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "security",
+    "redaction",
+    "dlp",
+    "ocr",
+    "pii",
+    "secrets"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/regression.mjs",
+    "selfcheck": "node ocr/selfcheck.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "jsqr": "^1.4.0"
+  },
+  "peerDependencies": {
+    "jsqr": "^1.4.0"
+  },
+  "peerDependenciesMeta": {
+    "jsqr": {
+      "optional": true
+    }
+  }
+}

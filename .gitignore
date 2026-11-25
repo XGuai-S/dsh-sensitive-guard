@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Local test artifacts
+_*.mjs
+_*.cjs
+_*.png
+_test/
+tmp/
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
