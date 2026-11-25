@@ -78,15 +78,17 @@ export function looksBinary(head, name) {
  */
 const ADDRESS_RULES = [
   {
+    level: 'BLOCK',
     id: 'cn-address',
-    risk: 'high',
+    kind: '住址',
     to: PRIVACY_PAIR,
     // 省/自治区 + 市 + 区/县 + 街道/路/号 chain.
     re: /(?:[\u4e00-\u9fff]{2,8}(?:省|自治区|特别行政区))?[\u4e00-\u9fff]{2,8}(?:市|自治州|地区)[\u4e00-\u9fff]{2,8}(?:区|县|旗)[\u4e00-\u9fff0-9]{0,20}?(?:路|街|道|巷|号|弄|村|镇|小区|大厦|花园|公寓|单元|室)[\u4e00-\u9fff0-9]{0,20}/g,
   },
   {
+    level: 'BLOCK',
     id: 'street-address',
-    risk: 'high',
+    kind: '住址',
     to: PRIVACY_PAIR,
     // A street number plus a building, which is specific enough to act on.
     re: /[\u4e00-\u9fff]{2,12}(?:路|街|大道|巷)[0-9]{1,5}号[\u4e00-\u9fff0-9]{0,20}(?:室|层|楼|单元|栋|座|号)/g,
@@ -96,8 +98,9 @@ const ADDRESS_RULES = [
 /** Clinical markers that identify a medical record rather than a mention of illness. */
 const MEDICAL_RULES = [
   {
+    level: 'BLOCK',
     id: 'medical-record',
-    risk: 'high',
+    kind: '身份隐私',
     to: PRIVACY_PAIR,
     // 标签 + 取值。取值不能是证件号或护照号，那些规则已经先跑过。
     // Label plus value; the value must not be an id or passport shape, because
@@ -105,14 +108,16 @@ const MEDICAL_RULES = [
     re: /(?:门诊号|住院号|病案号|病历号|检查报告|检验报告|处方|主诉|现病史|既往史|手术记录)\s*[:：]\s*(?![A-Z]{1,2}\d{7,8}\b)(?![\d\s]{15,19}(?!\d))[^\s，。;；]{3,}/g,
   },
   {
+    level: 'BLOCK',
     id: 'diagnosis-line',
-    risk: 'high',
+    kind: '身份隐私',
     to: PRIVACY_PAIR,
     re: /(?:诊断|结论|病理)\s*[:：]\s*[\u4e00-\u9fffA-Za-z0-9，,、\s]{4,40}/g,
   },
   {
+    level: 'BLOCK',
     id: 'medical-id',
-    risk: 'high',
+    kind: '身份隐私',
     to: PRIVACY_PAIR,
     // 兜底：标签后跟任意字母数字组合（含被护照规则抢先的情况）。
     // Fallback: a label followed by any alphanumeric run, including values the
@@ -132,8 +137,9 @@ const MEDICAL_RULES = [
  * that reason.
  */
 export const NAME_ID_PAIR_RULE = {
-  id: 'name-id-pair',
-  risk: 'high',
+  level: 'BLOCK',
+    id: 'name-id-pair',
+  kind: '身份隐私',
   to: PRIVACY_PAIR,
   re: /[\u4e00-\u9fff]{2,4}(?=[^\n]{0,8}?(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d))[^\n]{0,8}?(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)/g,
 };
@@ -186,3 +192,5 @@ export async function decodeQr(pixels, width, height) {
     return [];
   }
 }
+
+

@@ -1,7 +1,7 @@
 {
     "name":  "dsh-sensitive-guard",
-    "version":  "3.0.0",
-    "description":  "Pre-gateway sensitive content guard for DeepSeek Harness. Masks secrets, PII, credentials, one-time codes and high-entropy keys on both request and response, reads text and QR from images, redacts irreversibly. Default mask-and-pass, optional strict block.",
+    "version":  "1.0.0",
+    "description":  "Pre-gateway sensitive content guard for DeepSeek Harness. Intercepts the session/prompt HTTP body before it reaches the inbox, so plaintext never lands in inbox or session. Three-level classification cleans and continues instead of aborting; only bypass-attack instructions are refused. Dual-direction, chunked and recursive scanning, structured logs, image OCR and QR.",
     "type":  "module",
     "license":  "MIT",
     "author":  "XGuai-S",
@@ -21,7 +21,13 @@
                 },
     "files":  [
                   "index.js",
+                  "rules.js",
+                  "masking.js",
+                  "response.js",
+                  "prebody.js",
+                  "bypass.js",
                   "ocr",
+                  "scripts",
                   "cordis.patch.yml",
                   "locale/*.json",
                   "docs",
@@ -30,6 +36,7 @@
                   "README.md",
                   "README.zh.md",
                   "README.en.md",
+                  "CHANGELOG.md",
                   "LICENSE"
               ],
     "keywords":  [
@@ -47,8 +54,9 @@
                     "node":  "\u003e=20"
                 },
     "scripts":  {
-                    "test":  "node test/regression.mjs",
-                    "selfcheck":  "node ocr/selfcheck.mjs"
+                    "test":  "node test/regression.mjs \u0026\u0026 node test/prebody.test.mjs",
+                    "selfcheck":  "node ocr/selfcheck.mjs",
+                    "scrub":  "node scripts/scrub-session.mjs"
                 },
     "dsh":  {
                 "bundle":  {

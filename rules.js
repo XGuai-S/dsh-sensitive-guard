@@ -1,16 +1,20 @@
 /**
- * 规则集与识别逻辑 / Rule tables and detection.
+ * 规则集与分级定义 / Rule tables and level definitions.
  *
- * 本文件只负责「识别什么」和「替换成什么」，不关心挂载点。
- * This module owns what is matched and what it becomes; it never touches a
- * hook point.
+ * 本文件只负责「识别什么」「替换成什么」「属于哪一级」，不关心挂载点。
+ * This module owns what is matched, what it becomes, and which level it
+ * belongs to; it never touches a hook point.
  *
- * 设计要点 / Design notes:
+ * 三级分类 / Three levels:
  *
- * - 每条规则用 `keepGroup` 保留键名与分隔符，只替换取值，因此 JSON、YAML、
- *   properties、gradle 的结构不会被破坏。
- * - 占位符一旦写入，后续规则不再匹配，保证同一个值只替换一次。
- * - 高熵兜底必须排除端口、版本号与十六进制哈希，否则会把普通标识符也当密钥。
+ * - **BLOCK** 阻断：泄露后果不可逆（私钥、身份、支付、高权限密码、联系方式、
+ *   验证码、详细住址）。命中即拦截，不写 session、不转发模型。
+ * - **MASK** 脱敏：隐私风险但非直接资金/权限损失（网络、设备、会话、交易、
+ *   证书、路径、指纹）。替换为占位符后正常写入。
+ * - **PASS** 放行：白名单与无敏感内容，原文写入。
+ *
+ * 识别优先级 / Recognition priority:
+ *   白名单 > 绕过判定 > BLOCK > MASK > PASS
  */
 
 /** 占位符词表 / Placeholder vocabulary. */
@@ -18,201 +22,406 @@ export const PLACEHOLDERS = Object.freeze({
   secret: '{{SECRET_TOKEN}}',
   privacy: '{{PRIVACY_ID}}',
   cred: '{{CRED_CODE}}',
+  social: '{{SOCIAL_ID}}',
   otp: '{{ONE_TIME_CODE}}',
+  net: '{{NET_IP}}',
+  lan: '{{LAN_IP}}',
+  mac: '{{MAC_ADDR}}',
+  email: '{{EMAIL_ADDR}}',
   path: '{{LOCAL_PATH}}',
   device: '{{DEVICE_ID}}',
-  email: '{{EMAIL_ADDR}}',
-  net: '{{NET_IP}}',
-  url: '{{PRIVATE_URL}}',
+  home: '{{HOME_ADDR}}',
+  trade: '{{TRADE_NO}}',
+  cert: '{{CERT_INFO}}',
+  fingerprint: '{{KEY_FINGERPRINT}}',
   db: '{{DB_CRED}}',
+  url: '{{PRIVATE_URL}}',
 });
 
-/** 文档示例值，永不脱敏 / Documentation samples that are never masked. */
+/** 分级 / Levels. */
+export const LEVELS = Object.freeze({ block: 'BLOCK', mask: 'MASK', pass: 'PASS', error: 'ERROR' });
+
+/**
+ * 白名单降噪 / Whitelist noise reduction.
+ *
+ * 规格要求白名单优先级最高，命中即跳过所有阻断与脱敏规则。
+ * The spec puts the whitelist above every other rule.
+ */
 export const DEFAULT_WHITELIST = [
-  'test-key',
-  'demo-sk',
-  'example-token',
-  'placeholder',
-  'mock-secret',
-  'md5',
-  'sha256',
+  // 回环与广播
+  '127.0.0.1', '::1', '0.0.0.0', '255.255.255.255',
+  // 示例域名
+  'example.com', 'example.org', 'example.net', 'localhost',
+  // 示例值与占位
+  'test-key', 'demo-key', 'demo-sk', 'test-token', 'example-token',
+  'mock-secret', 'placeholder', 'your_key', 'your-key', 'yourkey',
+  'xxx', 'xxxx', 'changeme', 'test/password',
+  // 哈希算法名
+  'md5', 'sha1', 'sha256', 'sha512',
+  // 样板测试数据
+  '6222000000000000', '4111111111111111', '5555555555554444',
+  '110101199003074512', '13800138000', '13800138001',
 ];
 
 /**
- * 命中分类，用于日志标注 / Hit categories, used in log labels.
- * 规格要求日志标注命中类型：账号 / 密码 / api密钥 / 验证码 / 可疑长串。
+ * 命中分类 / Hit kinds, used in structured logs.
  */
 export const HIT_KINDS = Object.freeze({
   secret: 'api密钥',
-  account: '账号',
   password: '密码',
+  account: '账号',
   otp: '验证码',
   entropy: '可疑长串',
   privacy: '身份隐私',
+  contact: '联系方式',
+  social: '社交账号',
+  address: '住址',
   path: '本地路径',
   device: '设备信息',
   net: '网络地址',
+  mac: 'MAC地址',
+  email: '邮箱',
+  fingerprint: '密钥指纹',
+  trade: '交易号',
+  cert: '证书信息',
+  bypass: '绕过尝试',
 });
 
-const MAX_SCAN_CHARS = 4 * 1024 * 1024;
+/** 高风险类型，单独告警等级 / High-risk kinds. */
+export const HIGH_RISK_KINDS = new Set([
+  HIT_KINDS.secret, HIT_KINDS.privacy, HIT_KINDS.password,
+  HIT_KINDS.otp, HIT_KINDS.contact, HIT_KINDS.address,
+  HIT_KINDS.fingerprint, HIT_KINDS.cert,
+]);
+
+/** 扫描上限 / Scan bounds. */
+export const MAX_SCAN_CHARS = 4 * 1024 * 1024;
+/** 分片大小 / Chunk size for large text. */
+export const CHUNK_SIZE = 4096;
+/** 递归深度上限 / Recursion depth bound. */
+export const MAX_RECURSE_DEPTH = 3;
 
 /**
- * 键值对前缀：键名 + 可选闭合引号 + 分隔符 + 可选起始引号。
- * KV prefix: key name, optional closing quote, separator, optional opening quote.
+ * 键值对前缀 / KV prefix.
  *
- * 必须允许键名后紧跟引号，否则 JSON 的 `{"password":"x"}` 匹配不到。
- * 复合键名允许 `.`、`_`、`-` 三种连接符，覆盖 properties 与 gradle 写法。
- *
- * The closing quote after the key is required for JSON (`{"password":"x"}`).
- * Compound keys accept `.`, `_`, and `-` so properties and gradle styles work.
+ * 允许键名后跟闭合引号（JSON），也允许 `.`、`_`、`-` 连接。
+ * 分隔符覆盖 `=`、`:`、`=>`、`：`，以及可选起始引号。
  */
-const KV_KEY = String.raw`(?:password|passwd|pwd|secret|token|apikey|api[._-]?key|access[._-]?key|access[._-]?token|auth[._-]?token|client[._-]?secret|private[._-]?key|storePassword|keyPassword|pkcs12(?:Password)?|signaturePassword|bearer|credential|账号|帐号|用户名|密码|口令|数据库密码|wifi密码|密钥)`;
+const KV_KEY = [
+  'password', 'passwd', 'pwd', 'secret', 'token', 'key', 'apikey', 'api[._-]?key',
+  'accesskey', 'access[._-]?key', 'access[._-]?token', 'auth', 'authorization',
+  'bearer', 'sshkey', 'ssh[._-]?key', 'private[._-]?key', 'passphrase',
+  'client[._-]?secret', 'storePassword', 'keyPassword', 'pkcs12(?:Password)?',
+  'signaturePassword', 'credential',
+  '账号', '帐号', '用户名', '密码', '口令', '数据库密码', 'wifi密码', '支付密钥', '密钥',
+].join('|');
 
-const KV_PREFIX = String.raw`((?:${KV_KEY})\s*["'` + '`' + String.raw`]?\s*[:=：]\s*["'` + '`' + String.raw`]?)`;
+const KV_PREFIX = String.raw`((?:${KV_KEY})\s*["'` + '`' + String.raw`]?\s*(?:=>|[:=：])\s*["'` + '`' + String.raw`]?)`;
+
+/** 取值终止符 / Value terminators. */
+const KV_VALUE = String.raw`([^\s"'` + '`' + String.raw`,;)}\]]{3,})`;
 
 /** 固定前缀密钥 / Fixed-prefix keys. */
-const KEY_PREFIX = String.raw`(?:sk-proj-|sk-ant-|sk-|ghp_|gho_|github_pat_|glpat-|AKIA|ASIA|LTAI|AKID|AIza|hf_|xox[baprs]-|sk_live_|rk_test_|whsec_|npm_)`;
+const KEY_PREFIX = [
+  'sk-proj-', 'sk-ant-', 'sk-', 'ghp_', 'gho_', 'github_pat_', 'glpat-',
+  'AKIA', 'ASIA', 'LTAI', 'AKID', 'AIza', 'hf_', 'xox[baprs]-',
+  'sk_live_', 'rk_test_', 'whsec_', 'npm_', 'ssh-rsa', 'ssh-ed25519',
+].join('|');
+
+/** PEM 私钥块 / PEM private key blocks. */
+const PEM_PRIVATE = String.raw`-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----[\s\S]{0,8192}?-----END (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----`;
+
+/** PEM 公钥块 / PEM public key blocks（默认放行）. */
+const PEM_PUBLIC = String.raw`-----BEGIN PUBLIC KEY-----[\s\S]{0,8192}?-----END PUBLIC KEY-----`;
+
+/** 高权限密码关键词 / Privileged password keywords. */
+const PRIVILEGED_KEYWORDS = 'root|ssh|admin|super|payment|pay|passphrase|管理员|超级|支付';
 
 /**
  * 基础规则表 / Base rule table.
  *
- * `kind` 只用于日志标注，`risk` 决定日志等级，两者都不改变「一律脱敏」的行为。
- * `kind` labels the log line, `risk` sets its level; neither changes the
- * "always mask" behaviour.
+ * 顺序即优先级：结构化字段 → 证件 → 凭证 → 地址 → 网络。
+ * `level` 决定命中后的处置，`kind` 只用于日志。
+ *
+ * Order is priority. `level` decides the action; `kind` only labels the log.
  */
 const BASE_RULES = [
-  // --- 明文密钥 / secrets ---
+  // ========== 私钥与高权限密钥：BLOCK ==========
   {
-    id: 'private-key',
-    risk: 'high',
+    id: 'pem-private-key',
+    level: LEVELS.block,
     kind: HIT_KINDS.secret,
     to: PLACEHOLDERS.secret,
-    re: /-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----[\s\S]{0,8192}?-----END (?:[A-Z0-9]+ )?PRIVATE KEY-----/g,
+    re: new RegExp(PEM_PRIVATE, 'g'),
+  },
+  {
+    id: 'ssh-private-key',
+    level: LEVELS.block,
+    kind: HIT_KINDS.secret,
+    to: PLACEHOLDERS.secret,
+    re: /(?<![\w-])ssh-(?:rsa|ed25519|dss)\s+AAAA[A-Za-z0-9+/=]{20,}/g,
   },
   {
     id: 'key-prefix',
-    risk: 'high',
+    level: LEVELS.block,
     kind: HIT_KINDS.secret,
     to: PLACEHOLDERS.secret,
-    re: new RegExp(String.raw`(?<![\w-])${KEY_PREFIX}[A-Za-z0-9_-]{8,}`, 'g'),
+    re: new RegExp(String.raw`(?<![\w-])${KEY_PREFIX}[A-Za-z0-9_+=/-]{8,}`, 'g'),
   },
   {
     id: 'jwt',
-    risk: 'high',
+    level: LEVELS.block,
     kind: HIT_KINDS.secret,
     to: PLACEHOLDERS.secret,
-    re: /(?<![\w-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
+    // 示例 JWT 由白名单放行。
+    re: /(?<![\w-])eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
+    validate: (value) => !isWhitelistedValue(value),
   },
   {
     id: 'bearer',
-    risk: 'high',
+    level: LEVELS.block,
     kind: HIT_KINDS.secret,
     to: PLACEHOLDERS.secret,
-    re: /((?:Authorization\s*:\s*)?Bearer\s+)[A-Za-z0-9._~+/-]{8,}=*/gi,
-    keepGroup: 1,
-  },
-  {
-    id: 'kv-credential',
-    risk: 'high',
-    kind: HIT_KINDS.password,
-    to: PLACEHOLDERS.cred,
-    // 取值排除分隔符与空白；JSON 的 `"` 与 `}` 也要排除，才能只吃掉值。
-    // The value stops at a separator or whitespace; quotes and braces are
-    // excluded so a JSON value is replaced without breaking its structure.
-    re: new RegExp(String.raw`${KV_PREFIX}([^\s"'` + '`' + String.raw`,;)}\]]{3,})`, 'gi'),
+    re: /((?:Authorization\s*[:=]\s*)?Bearer\s+)[A-Za-z0-9._~+/-]{8,}=*/gi,
     keepGroup: 1,
   },
 
-  // --- 身份隐私 / identity ---
+  // ========== 高权限密码：BLOCK ==========
+  {
+    id: 'privileged-password',
+    level: LEVELS.block,
+    kind: HIT_KINDS.password,
+    to: PLACEHOLDERS.secret,
+    // root/ssh/admin/payment/passphrase 等关键词，取值为高熵串。
+    re: new RegExp(String.raw`((?:${PRIVILEGED_KEYWORDS})[^\n]{0,24}?(?:password|passwd|pwd|密码|口令|passphrase)\s*(?:=>|[:=：])\s*["'\`]?)([^\s"'\`,;)}\]]{6,})`, 'gi'),
+    keepGroup: 1,
+  },
+
+  // ========== 身份与支付：BLOCK ==========
   {
     id: 'cn-id-card',
-    risk: 'high',
+    level: LEVELS.block,
     kind: HIT_KINDS.privacy,
     to: PLACEHOLDERS.privacy,
     re: /(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)/g,
-  },
-  {
-    id: 'cn-mobile',
-    risk: 'high',
-    kind: HIT_KINDS.privacy,
-    to: PLACEHOLDERS.privacy,
-    re: /(?<!\d)1[3-9]\d{9}(?!\d)/g,
+    validate: (value) => !isPlaceholderNumber(value),
   },
   {
     id: 'bank-card',
-    risk: 'high',
+    level: LEVELS.block,
     kind: HIT_KINDS.privacy,
     to: PLACEHOLDERS.privacy,
-    re: /(?<!\d)\d{16,19}(?!\d)/g,
-    validate: luhn,
+    re: /(?<!\d)(?:\d{4}[ -]?){3,4}\d{0,3}(?!\d)/g,
+    validate: validateBankCard,
+  },
+  {
+    id: 'cvv',
+    level: LEVELS.block,
+    kind: HIT_KINDS.privacy,
+    to: PLACEHOLDERS.privacy,
+    re: /((?:CVV2?|CVC2?|安全码|校验码)\s*[:=：]?\s*)(\d{3,4})(?!\d)/gi,
+    keepGroup: 1,
   },
   {
     id: 'passport',
-    risk: 'high',
+    level: LEVELS.block,
     kind: HIT_KINDS.privacy,
     to: PLACEHOLDERS.privacy,
-    re: /(?<![\w])(?:E\d{8}|[GH]\d{8})(?![\w])/g,
+    re: /(?<![\w])(?:E\d{8}|[GH]\d{8}|[A-Z]\d{8,10})(?![\w])/g,
+    validate: (value) => !isWhitelistedValue(value) && !isExcluded(value),
   },
 
-  // --- 验证码 / one-time codes ---
+  // ========== 联系类：BLOCK（新增） ==========
+  {
+    id: 'cn-mobile',
+    level: LEVELS.block,
+    kind: HIT_KINDS.contact,
+    to: PLACEHOLDERS.privacy,
+    re: /(?<!\d)1[3-9]\d{9}(?!\d)/g,
+    validate: (value) => !isPlaceholderNumber(value),
+  },
+  {
+    id: 'email',
+    level: LEVELS.block,
+    kind: HIT_KINDS.email,
+    to: PLACEHOLDERS.email,
+    re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+    validate: (value) => !isWhitelistedValue(value),
+  },
+  {
+    id: 'social-id',
+    level: LEVELS.block,
+    kind: HIT_KINDS.social,
+    to: PLACEHOLDERS.social,
+    re: /(?:wxid_[A-Za-z0-9_-]{6,}|(?:(?:微信|QQ|qq|wx|wechat|weixin)\s*(?:号|ID|id)?\s*[:：=]?\s*)[A-Za-z0-9_-]{5,20})/g,
+    validate: (value) => !/^(?:微信|QQ|qq|wx|wechat|weixin)\s*(?:号|ID|id)?$/i.test(value),
+  },
+
+  // ========== 一次性凭证：BLOCK（新增） ==========
   {
     id: 'one-time-code',
-    risk: 'high',
+    level: LEVELS.block,
     kind: HIT_KINDS.otp,
     to: PLACEHOLDERS.otp,
-    // 关键词 + 4–6 位数字，关键词与数字之间允许少量分隔符。
-    re: /((?:验证码|短信码|校验码|动态码|verify|verification|otp|totp|one[- ]?time(?: code| password)?|2fa|code)\s*[:：=是为]?\s*)(\d{4,6})(?!\d)/gi,
+    re: /((?:验证码|短信码|校验码|动态码|口令|verify|verification|otp|totp|one[- ]?time(?: code| password)?|2fa|code)\s*[:：=是为]?\s*)(\d{4,6})(?!\d)/gi,
     keepGroup: 1,
   },
 
-  // --- 系统凭证 / system credentials ---
+  // ========== 位置信息：BLOCK（新增） ==========
   {
-    id: 'service-password',
-    risk: 'high',
+    id: 'home-address',
+    level: LEVELS.block,
+    kind: HIT_KINDS.address,
+    to: PLACEHOLDERS.home,
+    re: /(?:[\u4e00-\u9fff]{2,8}(?:省|自治区|特别行政区))?[\u4e00-\u9fff]{2,8}(?:市|自治州|地区)[\u4e00-\u9fff]{2,8}(?:区|县|旗)[\u4e00-\u9fff0-9]{0,24}?(?:路|街|道|巷|弄|村|镇|小区|花园|公寓|大厦|号楼|栋|单元|室)[\u4e00-\u9fff0-9]{0,24}/g,
+  },
+  {
+    id: 'home-address-street',
+    level: LEVELS.block,
+    kind: HIT_KINDS.address,
+    to: PLACEHOLDERS.home,
+    re: /(?:\d{6}\s*)?[\u4e00-\u9fff]{2,12}(?:路|街|大道|巷)[0-9]{1,5}号[\u4e00-\u9fff0-9]{0,24}(?:室|层|楼|单元|栋|座|号)/g,
+  },
+
+  // ========== 普通密码：BLOCK（新增） ==========
+  {
+    id: 'kv-credential',
+    level: LEVELS.block,
     kind: HIT_KINDS.password,
     to: PLACEHOLDERS.cred,
-    re: /((?:adb|root|ssh|server|database|db|mysql|postgres|redis|wifi|wi-fi|router)[^\n]{0,24}?(?:password|passwd|pwd|密码|口令)\s*[:=：]\s*)["'`]?[^\s"'`,;]{3,}/gi,
+    re: new RegExp(String.raw`${KV_PREFIX}${KV_VALUE}`, 'gi'),
     keepGroup: 1,
   },
   {
-    id: 'cookie-session',
-    risk: 'high',
-    kind: HIT_KINDS.cred,
+    id: 'service-password',
+    level: LEVELS.block,
+    kind: HIT_KINDS.password,
     to: PLACEHOLDERS.cred,
-    re: /((?:cookie|set-cookie|session[_-]?id|jsessionid|phpsessid)\s*[:=]\s*)[^\s;,\n]{8,}/gi,
+    re: /((?:adb|server|database|db|mysql|postgres|redis|wifi|wi-fi|router)[^\n]{0,24}?(?:password|passwd|pwd|密码|口令)\s*[:=：]\s*)["'`]?[^\s"'`,;]{3,}/gi,
+    keepGroup: 1,
+  },
+  {
+    id: 'env-credential',
+    level: LEVELS.block,
+    kind: HIT_KINDS.password,
+    to: PLACEHOLDERS.cred,
+    re: /(^|\n)(\s*(?:export\s+|ENV\s+)?[A-Z][A-Z0-9_]{2,}\s*(?:=>|[:=])\s*["'`]?)([^\s"'`,;#]{4,})/g,
+    keepGroup: 2,
+  },
+
+  // ========== 高熵兜底：BLOCK ==========
+  {
+    id: 'high-entropy',
+    level: LEVELS.block,
+    kind: HIT_KINDS.entropy,
+    to: PLACEHOLDERS.secret,
+    re: /(?<![\w+/=-])[A-Za-z0-9+/_-]{24,}(?![\w+/=-])/g,
+    validate: isHighEntropy,
+  },
+
+  // ========== 会话凭证：MASK ==========
+  {
+    id: 'cookie-session',
+    level: LEVELS.mask,
+    kind: HIT_KINDS.account,
+    to: PLACEHOLDERS.cred,
+    re: /((?:cookie|set-cookie|session|sid|connect\.sid|jsessionid|phpsessid)\s*[:=]\s*)[^\s;,\n]{8,}/gi,
     keepGroup: 1,
   },
   {
     id: 'temp-login-link',
-    risk: 'high',
+    level: LEVELS.mask,
     kind: HIT_KINDS.cred,
     to: PLACEHOLDERS.cred,
-    re: /\bhttps?:\/\/[^\s"'<>]{6,}?\?(?:[^\s"'<>]*?(?:token|ticket|code|sign|sig|expires|key)=)[^\s"'<>]{6,}/gi,
+    re: /\bhttps?:\/\/[^\s"'<>]{6,}?\?(?:[^\s"'<>]*?(?:token|ticket|code|sign|sig|expires|key|apikey|pwd)=)[^\s"'<>]{6,}/gi,
+  },
+  {
+    id: 'url-credential',
+    level: LEVELS.mask,
+    kind: HIT_KINDS.cred,
+    to: PLACEHOLDERS.cred,
+    re: /((?:[?&](?:token|apikey|api_key|access_token|auth|pwd|password|secret|sessionid)=))[^&\s#"']{3,}/gi,
+    keepGroup: 1,
   },
 
-  // --- 本地路径 / local paths ---
+  // ========== 交易信息：MASK ==========
+  {
+    id: 'trade-no',
+    level: LEVELS.mask,
+    kind: HIT_KINDS.trade,
+    to: PLACEHOLDERS.trade,
+    re: /((?:订单号|订单编号|流水号|交易号|支付单号|order(?:\s*(?:id|no|number))?|transaction(?:\s*id)?|trade(?:\s*no)?|payment[._-]?id)\s*[:=：]?\s*)[A-Za-z0-9_-]{8,}/gi,
+    keepGroup: 1,
+  },
+
+  // ========== 证书与指纹：MASK ==========
+  {
+    id: 'cert-info',
+    level: LEVELS.mask,
+    kind: HIT_KINDS.cert,
+    to: PLACEHOLDERS.cert,
+    re: /((?:证书序列号|serial(?:\s*number)?|序列号)\s*[:=：]\s*)[0-9A-Fa-f:\s]{8,}|((?:subject|DN|证书主题)\s*[:=：]\s*)[^\n]{8,}/gi,
+    keepGroup: 1,
+  },
+  {
+    id: 'key-fingerprint',
+    level: LEVELS.mask,
+    kind: HIT_KINDS.fingerprint,
+    to: PLACEHOLDERS.fingerprint,
+    re: /((?:fingerprint|指纹|SHA256|SHA-256|SHA1|SHA-1)\s*[:=：]?\s*)(?:(?:[0-9A-Fa-f]{2}:){15,31}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{40}(?![0-9A-Fa-f])|[0-9A-Fa-f]{64}(?![0-9A-Fa-f]))/gi,
+    keepGroup: 1,
+  },
+
+  // ========== 本地路径：MASK ==========
   {
     id: 'local-path',
-    risk: 'normal',
+    level: LEVELS.mask,
     kind: HIT_KINDS.path,
     to: PLACEHOLDERS.path,
-    re: /(?:[A-Za-z]:[\\/](?:Users|Documents and Settings)[\\/][^\s"'<>|,;)\]}]+|\/storage\/emulated\/\d+\/[^\s"'<>|,;)\]}]*|\/root\/[^\s"'<>|,;)\]}]*|\/home\/[^\s"'<>|,;)\]}]+|\/Users\/[^\s"'<>|,;)\]}]+)/g,
+    re: /(?:[A-Za-z]:[\\/][^\s"'<>|,;)\]}]+|\/storage\/[^\s"'<>|,;)\]}]*|\/sdcard\/[^\s"'<>|,;)\]}]*|\/data\/[^\s"'<>|,;)\]}]*|\/root\/[^\s"'<>|,;)\]}]*|\/home\/[^\s"'<>|,;)\]}]+|\/Users\/[^\s"'<>|,;)\]}]+)/g,
   },
 
-  // --- 设备信息 / device ids ---
+  // ========== 设备标识：MASK ==========
   {
     id: 'device-id',
-    risk: 'normal',
+    level: LEVELS.mask,
     kind: HIT_KINDS.device,
     to: PLACEHOLDERS.device,
     re: /\b(?:[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}|[0-9A-Fa-f]{16})\b/g,
-    validate: (value) => !/^\d+$/.test(value.replace(/-/g, '')),
+    validate: (value) => !isExcluded(value) && !/^\d+$/.test(value.replace(/-/g, '')),
   },
 
-  // --- 网络地址 / network ---
+  // ========== 网络：MASK ==========
   {
-    id: 'net-ip',
-    risk: 'normal',
+    id: 'mac-address',
+    level: LEVELS.mask,
+    kind: HIT_KINDS.mac,
+    to: PLACEHOLDERS.mac,
+    re: /(?<![0-9A-Fa-f:.-])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:.-])/g,
+    validate: (value) => !/^(?:00[:-]){5}00$/.test(value),
+  },
+  {
+    id: 'net-ipv6',
+    level: LEVELS.mask,
+    kind: HIT_KINDS.net,
+    to: PLACEHOLDERS.net,
+    // 标准 IPv6：完整八组、压缩写法（::）、以及带内嵌 IPv4 的形式。
+    // Standard IPv6: full form, compressed (::), and IPv4-embedded.
+    re: /(?<![\w:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?::[0-9A-Fa-f]{1,4}){1,6}|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))(?::[0-9]{1,3}(?:\.[0-9]{1,3}){3})?(?![\w:])/g,
+    validate: (value) => value !== '::1' && value !== '::',
+    // ULA（fc00::/7）归入内网。
+    toFor: (value) => (/^(?:f[cd])/i.test(value) ? PLACEHOLDERS.lan : PLACEHOLDERS.net),
+  },
+  {
+    id: 'lan-ipv4',
+    level: LEVELS.mask,
+    kind: HIT_KINDS.net,
+    to: PLACEHOLDERS.lan,
+    re: /\b(?:10\.(?:\d{1,3}\.){2}\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.)\d{1,3}|192\.168\.(?:\d{1,3}\.)\d{1,3})\b/g,
+  },
+  {
+    id: 'net-ipv4',
+    level: LEVELS.mask,
     kind: HIT_KINDS.net,
     to: PLACEHOLDERS.net,
     re: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
@@ -243,63 +452,124 @@ export function luhn(value) {
   return sum % 10 === 0;
 }
 
-/** 回环与广播地址不视为部署机密 / Loopback and broadcast are not secrets. */
-function isMaskableIp(value) {
-  return value !== '127.0.0.1' && value !== '0.0.0.0' && value !== '255.255.255.255';
+/** 去掉分隔符 / Strip separators from a formatted number. */
+function digitsOnly(value) {
+  return value.replace(/[\s-]/g, '');
 }
 
 /**
- * 排除项：端口、版本号、十六进制哈希。
- * Exclusions: ports, version numbers, hex hashes.
+ * 银行卡校验 / Bank card validation.
+ * 16–19 位、Luhn 通过、排除重复与递增序列。
+ */
+export function validateBankCard(value) {
+  const digits = digitsOnly(value);
+  if (!/^\d{16,19}$/.test(digits)) return false;
+  if (/^(\d)\1+$/.test(digits)) return false;
+  if (isAscending(digits)) return false;
+  if (isWhitelistedValue(digits)) return false;
+  if (isExcluded(digits)) return false;
+  return luhn(digits);
+}
+
+/** 递增或递减序列 / Ascending or descending digit run. */
+function isAscending(value) {
+  let ascending = true;
+  let descending = true;
+  for (let index = 1; index < value.length; index += 1) {
+    const delta = value.charCodeAt(index) - value.charCodeAt(index - 1);
+    if (delta !== 1) ascending = false;
+    if (delta !== -1) descending = false;
+  }
+  return ascending || descending;
+}
+
+/** 样板证件号：全同、递增、白名单 / Sample identity numbers. */
+function isPlaceholderNumber(value) {
+  if (/^(\d)\1+$/.test(value)) return true;
+  if (isAscending(value.replace(/[Xx]$/, ''))) return true;
+  return isWhitelistedValue(value);
+}
+
+/**
+ * 白名单判定 / Whitelist test.
  *
- * 规格明确要求这些不判定为凭证。哈希串熵值很高，若不排除会被高熵兜底全部吃掉。
+ * 规格要求白名单优先级最高，命中即跳过所有规则。但整段文本的白名单判定只
+ * 对短文本生效：一段 4KB 代码里出现 `xxxx` 或 `xxx` 不该让整段免检。
+ *
+ * The whitelist outranks every rule, but the whole-text check applies only to
+ * short inputs: a 4 KB code block containing `xxxx` must not exempt the whole
+ * block from scanning.
+ */
+export function isWhitelistedValue(value) {
+  if (typeof value !== 'string' || value.length === 0) return false;
+  const lowered = value.toLowerCase();
+
+  // 长文本不做整段白名单判定，避免子串误伤。
+  if (value.length > 256) return false;
+
+  // 精确等于白名单项。
+  if (DEFAULT_WHITELIST.some((token) => lowered === token.toLowerCase())) return true;
+
+  // 短文本允许子串匹配，但白名单项自身必须足够长，否则 `xxx` 会吃掉一切。
+  return DEFAULT_WHITELIST.some((token) => token.length >= 6 && lowered.includes(token.toLowerCase()));
+}
+
+/** 回环、广播、示例地址不视为部署机密 / Loopback, broadcast, sample addresses. */
+function isMaskableIp(value) {
+  return value !== '127.0.0.1'
+    && value !== '0.0.0.0'
+    && value !== '255.255.255.255'
+    && !value.startsWith('192.0.2.')
+    && !value.startsWith('198.51.100.')
+    && !value.startsWith('203.0.113.');
+}
+
+/**
+ * 排除项 / Exclusions.
+ * 端口、版本号、哈希、UUID、颜色值、数学算式、寄存器地址。
  */
 export function isExcluded(value) {
-  if (!/^[A-Za-z0-9._+/-]+$/.test(value)) return false;
-  // 纯数字且落在端口范围内。
+  if (typeof value !== 'string' || value.length === 0) return false;
+  // 端口
   if (/^\d{1,5}$/.test(value)) {
     const port = Number(value);
     if (port >= 1 && port <= 65535) return true;
   }
-  // 版本号：1.2.3 / v1.2.3 / 1.2.3-beta.1
+  // 版本号
   if (/^v?\d+(?:\.\d+){1,3}(?:[-+][\w.]+)?$/i.test(value)) return true;
-  // md5 / sha1 / sha256 / sha512
-  if (/^[0-9a-f]{32}$/i.test(value)) return true;
-  if (/^[0-9a-f]{40}$/i.test(value)) return true;
-  if (/^[0-9a-f]{64}$/i.test(value)) return true;
-  if (/^[0-9a-f]{128}$/i.test(value)) return true;
+  // 十六进制哈希（md5/sha1/sha256/sha512）与 git commit hash
+  if (/^[0-9a-f]{7,128}$/i.test(value) && [32, 40, 64, 128].includes(value.length)) return true;
+  if (/^[0-9a-f]{7,8}$/i.test(value)) return true;
+  // UUID
+  if (/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value)) return true;
+  // 颜色值
+  if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) return true;
+  // 寄存器地址
+  if (/^0x[0-9a-f]{1,16}$/i.test(value)) return true;
+  // 数学算式
+  if (/^[\d\s+\-*/%().=<>!&|^~]+$/.test(value) && /[+\-*/%]/.test(value)) return true;
   return false;
 }
 
 /**
- * 高熵判定：字符种类足够多且长度达标，才视为可疑凭证。
- * High-entropy test: enough character classes and enough length.
- *
- * 长度阈值取 24（规格要求 ≥24）。同时要求至少三类字符，避免把长英文单词、
- * 长标识符误判成密钥。
+ * 高熵判定 / High-entropy test.
+ * 长度 ≥ 24，至少三类字符，去重 ≥ 12，香农熵 ≥ 3.0。
  */
 export function isHighEntropy(value) {
   if (typeof value !== 'string' || value.length < 24) return false;
   if (isExcluded(value)) return false;
+  if (isWhitelistedValue(value)) return false;
   let classes = 0;
   if (/[a-z]/.test(value)) classes += 1;
   if (/[A-Z]/.test(value)) classes += 1;
   if (/\d/.test(value)) classes += 1;
   if (/[^A-Za-z0-9]/.test(value)) classes += 1;
-  // 至少三类字符：纯小写长串是英文单词或标识符，不是密钥。
   if (classes < 3) return false;
-  // 去重后字符数太少，说明是重复填充而非随机串。
-  const distinct = new Set(value).size;
-  if (distinct < 12) return false;
-  // 香农熵下限：排除 aaaaaBBB123456... 这类低熵填充。
+  if (new Set(value).size < 12) return false;
   return shannonEntropy(value) >= 3.0;
 }
 
-/**
- * 香农熵（每字符比特数）/ Shannon entropy in bits per character.
- * 随机生成的密钥通常 > 3.5；结构化标识符通常 < 3.0。
- * Random keys usually exceed 3.5; structured identifiers stay below 3.0.
- */
+/** 香农熵（每字符比特数）/ Shannon entropy in bits per character. */
 export function shannonEntropy(value) {
   const counts = new Map();
   for (const char of value) counts.set(char, (counts.get(char) ?? 0) + 1);
@@ -319,7 +589,7 @@ function urlRules(config) {
   const internal = config.privateUrlSuffixes ?? INTERNAL_SUFFIXES;
   rules.push({
     id: 'private-url',
-    risk: 'normal',
+    level: LEVELS.mask,
     kind: HIT_KINDS.net,
     to: PLACEHOLDERS.url,
     re: new RegExp(`\\b(?:https?:\\/\\/)?(?:[a-z0-9-]+\\.)+(?:${internal.join('|')})\\b[A-Za-z0-9/._~:%?#@!$&'*+,;=-]*`, 'gi'),
@@ -327,10 +597,11 @@ function urlRules(config) {
   if (level === true || level === 'all') {
     rules.push({
       id: 'domain',
-      risk: 'normal',
+      level: LEVELS.mask,
       kind: HIT_KINDS.net,
       to: PLACEHOLDERS.url,
       re: new RegExp(`\\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:${PUBLIC_SUFFIXES.join('|')})\\b`, 'gi'),
+      validate: (value) => !isWhitelistedValue(value),
     });
   }
   return rules;
@@ -338,60 +609,35 @@ function urlRules(config) {
 
 /** 可选规则 / Optional rules. */
 function optionalRules(config) {
-  const rules = [];
-  if (config.maskDbCredentials) {
+  const rules = [...urlRules(config)];
+  if (config.maskPublicKeys === true) {
     rules.push({
-      id: 'db-credential',
-      risk: 'high',
-      kind: HIT_KINDS.cred,
-      to: PLACEHOLDERS.db,
-      re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql|oracle):\/\/[^\s:@/]+:[^\s@/]+@[^\s"'<>]*/gi,
+      id: 'pem-public-key',
+      level: LEVELS.mask,
+      kind: HIT_KINDS.secret,
+      to: PLACEHOLDERS.secret,
+      re: new RegExp(PEM_PUBLIC, 'g'),
     });
   }
-  rules.push({
-    id: 'email',
-    risk: 'normal',
-    kind: HIT_KINDS.net,
-    to: PLACEHOLDERS.email,
-    re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
-  });
-  rules.push(...urlRules(config));
+  if (config.maskDbCredentials !== false) {
+    rules.push({
+      id: 'db-credential',
+      level: LEVELS.block,
+      kind: HIT_KINDS.password,
+      to: PLACEHOLDERS.db,
+      re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql|oracle|clickhouse):\/\/[^\s:@/]+:[^\s@/]+@[^\s"'<>]*/gi,
+    });
+  }
   return rules;
 }
 
 /**
  * 组装规则表 / Assemble the rule table.
  *
- * 顺序很重要 / Order matters:
- *
- * - 「姓名+证件」必须排在身份证规则之前，否则证件先被替换，姓名留在原地。
- * - 具体规则在前，高熵兜底在最后，否则兜底会先吃掉本应精确分类的值。
- * - 住址与病历规则由调用方通过 `extraRules` 注入，避免 rules.js 反向依赖
- *   ocr/detect.js 造成循环引用。
- *
- * The name-and-id pair must precede the identity-number rule, or the number is
- * replaced first and the name is left behind. Specific rules come before the
- * entropy fallback. Address and medical rules arrive through `extraRules`, so
- * this module never imports the OCR layer.
- *
  * @param {object} config 归一化配置 / normalized config
  * @param {object[]} [extraRules] 额外规则（住址、病历、姓名+证件）/ extra rules
  */
 export function buildRules(config, extraRules = []) {
   const rules = [...extraRules, ...BASE_RULES, ...optionalRules(config)];
-  if (config.detectHighEntropy !== false) {
-    rules.push({
-      id: 'high-entropy',
-      risk: 'high',
-      kind: HIT_KINDS.entropy,
-      to: PLACEHOLDERS.secret,
-      // 边界不含 `=`：`password=value` 里的 `=` 是分隔符，高熵只该吃掉取值，
-      // 否则整段连键名一起被替换，KV 规则的精确分类就丢了。
-      // `=` is excluded from the boundary: in `password=value` it is a
-      // separator, so the fallback must take the value alone.
-      re: /(?<![\w+/=-])[A-Za-z0-9+/_-]{24,}(?![\w+/=-])/g,
-      validate: isHighEntropy,
-    });
-  }
   return rules.filter((rule) => !config.disabledRules?.includes(rule.id));
 }

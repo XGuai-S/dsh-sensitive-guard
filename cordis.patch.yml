@@ -3,36 +3,48 @@
       name: 'dsh-sensitive-guard'
       config:
         enabled: true
-        # 模式：mask 脱敏放行（默认）| block 严格阻断
-        mode: mask
-        blockOnRisk: high
+        # 调试旁路：true 时跳过全部检测，仅用于调试
+        bypassSanitize: false
+        # 混合文本：true 时只清除敏感片段（当前默认已按清洗实现）
+        partialBlock: false
+        # HTTP 前置拦截：在明文进入 inbox 之前改写请求体。
+        # 这是唯一能阻止明文进 inbox 的位置，失败即放行。
+        interceptPromptBody: true
+        # 诊断：记录每个到达 connection/request 的请求，确认传输通道
+        diagnoseTransport: true
+        blockBypass: true
 
-        # 双向扫描：请求侧与响应侧
+        # 双向扫描
         maskUserMessages: true
         maskToolResults: true
         maskResponses: true
+        maskSubagentReturns: true
         auditRequests: true
 
-        # 识别细则
+        # 识别开关
         detectHighEntropy: true
         detectAddresses: true
         detectMedical: true
         detectQr: true
+        detectBase64: false
         detectBypass: true
         markBinary: true
         maskDbCredentials: true
+        maskPublicKeys: false
 
         # URL 分级：false | internal | all
         maskUrls: false
 
         # 日志与告警
         logMasks: true
+        logFormat: json
         highRiskAlertAfter: 6
         perSessionStats: true
 
         # 图片
         maxImagesPerTurn: 3
         ocr: true
+        ocrMode: local
         imageBackend: auto
         ocrLanguage: zh-Hans-CN
         tesseractLanguage: chi_sim+eng
@@ -45,3 +57,5 @@
 
         # 会话临时白名单（误判内容，当前会话不再脱敏）
         sessionWhitelist: []
+        # 全局永久白名单
+        globalWhitelist: []
