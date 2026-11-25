@@ -1,214 +1,259 @@
-# dsh-sensitive-guard · 敏感内容守卫
+# 敏感内容守卫
 
-[English](README.en.md) | **简体中文**
+DeepSeek Harness 的请求前置守卫：在内容发往中转网关之前完成识别、脱敏与拦截判定。
+执行优先级高于路由、重试、模型调度，全程无交互、不询问。
 
-DeepSeek Harness 的宿主插件：在模型请求离开本机、发往中转网关之前，把敏感内容替换为占位符。**不阻断任何请求**，不中断任务，不抛异常。
+## 两种模式
 
-为跨机器使用而设计：没有任何一处写死在特定主机上，并附带自检工具报告当前机器具备哪些能力。
+| 模式 | 行为 |
+|---|---|
+| `mask`（默认） | 脱敏放行：命中即替换为占位符，任务继续，仅日志区分风险等级 |
+| `block` | 严格阻断：命中高风险时抛出 `CONTENT_REFUSED`，不发起请求、不产生请求体 |
 
----
+切换方式：
 
-## 快速开始
-
-```bash
-# 在将运行它的机器上，于插件目录内执行：
-npm install                  # 安装 jsqr
-node ocr/selfcheck.mjs       # 查看本机具备哪些能力
+```yaml
+config:
+  mode: block
+  blockOnRisk: high    # high | normal
 ```
 
-通过 **Plugins → Add plugin** 安装该目录，或使用 `plugin_manager install_bundle`。
+## 双向扫描
 
----
-
-## 一、核心行为
-
-**唯一结果：脱敏替换。** 每处命中都会被替换为占位符，请求继续走路由、重试、调度。没有拒绝分支；只有日志区分风险等级。
-
-| 命中内容 | 占位符 | 风险等级 |
+| 方向 | 挂载点 | 行为 |
 |---|---|---|
-| APIKEY、私钥、`sk-`、`ghp_`、`glpat-`、Bearer、JWT、`storePassword`、pkcs12 | `{{SECRET_TOKEN}}` | 高 |
-| 身份证号、手机号、银行卡号、护照号 | `{{PRIVACY_ID}}` | 高 |
-| 姓名 + 证件号组合 | `{{PRIVACY_ID}}` | 高 |
-| 住址（行政区划链或街道门牌） | `{{PRIVACY_ID}}` | 高 |
-| 病历号、诊断行 | `{{PRIVACY_ID}}` | 高 |
-| adb/root/wifi/数据库密码、2FA 验证码、Cookie、sessionId、签名登录链接 | `{{CRED_CODE}}` | 高 |
-| 数据库连接串 | `{{DB_CRED}}` | 高 |
-| 本地绝对路径 | `{{LOCAL_PATH}}` | 普通 |
-| IMEI、Android ID、SN 序列号 | `{{DEVICE_ID}}` | 普通 |
-| 邮箱地址 | `{{EMAIL_ADDR}}` | 普通 |
-| 内网/公网 IP | `{{NET_IP}}` | 普通 |
-| 私有域名与仓库地址（可选开启） | `{{PRIVATE_URL}}` | 普通 |
+| 请求侧 | `agent/pre-step` | 用户输入进入 step 前脱敏，并分析附带图片 |
+| 请求侧 | `tools/post-execute` | 工具输出落库前脱敏 |
+| 请求侧 | `llm/stream` | 审计即将发出的请求，检出残余命中并告警 |
+| 响应侧 | `llm/stream` | 模型返回的文本块在闭合时脱敏 |
 
-**一条铁律：** 某条规则写入的占位符，不会被后续规则再次匹配。因此每个值只被替换一次，绝不会出现 `_2` 后缀变体。
+响应侧为什么可行：DSH 的 `BlockAssembler` 在收到 `block-end` 时会用该块覆盖此前累积的
+`text-delta`。因此把整块文本脱敏后再发一个 `block-end`，下游拿到的就是脱敏后的内容，
+不必改动已经发出的增量。
 
-### 白名单
+## 脱敏映射
 
-`test-key`、`demo-sk`、`example-token`、`placeholder`、`mock-secret` 属于文档示例，命中即跳过，不标记、不脱敏。
-
----
-
-## 二、挂载点
-
-| 事件 | 作用 |
+| 命中内容 | 占位符 |
 |---|---|
-| `agent/pre-step` | 用户输入进入 step 前脱敏；同时分析附加图片 |
-| `tools/post-execute` | 工具输出落库前脱敏，避免回放时泄露 |
-| `llm/stream` | **仅审计**。循环构建的请求是深冻结的，只能读取记录，不能改写 |
+| 明文密钥、私钥、Bearer、JWT、高熵可疑长串 | `{{SECRET_TOKEN}}` |
+| 身份证、手机、银行卡、护照、住址、病历、姓名+证件 | `{{PRIVACY_ID}}` |
+| 账号密码、数据库密码、wifi 密码、Cookie、sessionId、临时登录链接 | `{{CRED_CODE}}` |
+| 验证码（关键词 + 4–6 位数字） | `{{ONE_TIME_CODE}}` |
+| 本地绝对路径 | `{{LOCAL_PATH}}` |
+| IMEI、Android ID、SN | `{{DEVICE_ID}}` |
+| 邮箱 | `{{EMAIL_ADDR}}` |
+| 内网 / 公网 IP | `{{NET_IP}}` |
+| 私有域名、内网地址 | `{{PRIVATE_URL}}` |
+| 数据库连接账号段 | `{{DB_CRED}}` |
 
-三处监听全部**失败开放**：任何内部异常都返回调用方原决策，守卫永远不会打断一个回合。
+## 识别细则
 
----
+### 键值对凭证
 
-## 三、图片处理
+识别 `password`、`pwd`、`secret`、`token`、`key`、`apikey`、`access_key`、`bearer`、
+`账号`、`密码`、`数据库密码`、`wifi密码` 等关键字，后跟 `=`、`:`、`：` 或引号时，
+**只替换取值，保留键名与分隔符**，因此 JSON、YAML、properties、gradle 结构不被破坏。
 
-### 3.1 双后端
+```json
+{"password":"mySecret123"}  →  {"password":"{{CRED_CODE}}"}
+```
 
-两个后端实现同一套五个操作，启动时自动探测并记录实际使用哪一个。
+```properties
+storePassword=abcdef123456  →  storePassword={{CRED_CODE}}
+```
 
-| 后端 | 平台 | 文字识别 | 像素/涂改/缩放 |
+### 固定前缀密钥
+
+`sk-`、`sk-proj-`、`sk-ant-`、`ghp_`、`github_pat_`、`glpat-`、`AKIA`、`AIza`、`hf_`、
+`eyJ` 开头的字符串判定为 API 密钥。
+
+### 高熵兜底
+
+无标记、无前缀的连续随机字符，长度 ≥ 24 且满足以下全部条件时判定为可疑凭证：
+
+- 至少包含三类字符（小写、大写、数字、符号）
+- 去重后字符数 ≥ 12
+- 香农熵 ≥ 3.0 比特/字符
+
+命中后标记 `【⚠️高熵可疑密钥】` 并脱敏。
+
+### 排除规则
+
+以下内容**不**判定为凭证：
+
+- 端口号（1–65535）
+- 版本号（`1.2.3`、`v2.0.0-beta.1`）
+- MD5 / SHA-1 / SHA-256 / SHA-512 哈希串
+
+## 白名单
+
+内置：`test-key`、`demo-sk`、`example-token`、`placeholder`、`mock-secret`、`md5`、`sha256`。
+
+命中白名单的字符串不识别、不标记、不脱敏。判定对象是**被替换的值**，不是整段匹配，
+因此 `apikey=test-key` 会完整保留。
+
+### 会话临时白名单
+
+标记误判内容后，当前会话不再重复脱敏：
+
+```yaml
+config:
+  sessionWhitelist:
+    - myFalsePositive
+```
+
+## 图片处理
+
+1. 上传前清除 EXIF（GPS、拍摄时间、设备型号、序列号）——由 `dsh-attachment-local`
+   在入库时完成。
+2. 本地 OCR 识别画面文字，结果走同一套脱敏规则。
+3. 二维码解码，解析结果同样脱敏。
+4. OCR 失败、乱码、置信度低：标记 `【⚠️OCR识别不可靠】`，抹除元数据后放行。
+5. 图片统一压缩分辨率，不上传原图。
+
+### 不可逆涂改
+
+命中规则的行用不透明纯色填充，然后整图重新编码。三个条件共同保证不可逆：
+
+1. **不透明填充**——没有图层、透明度或混合模式，底层像素不可达。
+2. **整图重新编码**——覆盖区域的原始扫描行在输出文件里完全不存在。
+3. **保存时不写元数据**——EXIF/GPS/机型不会回来。
+
+实测：覆盖后用同一引擎重新 OCR，识别出 0 行文字。
+
+**限制**：`$DSH_HOME/attachments` 下的原始文件仍在。附件存储是内容寻址且不可变的，
+脱敏改变的是模型收到的内容，不是宿主保留的内容。
+
+### 双后端
+
+| 后端 | 平台 | 文字识别 | 像素/涂改/压缩 |
 |---|---|---|---|
 | `winrt` | Windows | 系统自带 `Windows.Media.Ocr` | WinRT 成像 |
-| `python` | 任意平台 | `tesseract` 命令行（若已安装） | Pillow |
+| `python` | 任意 | `tesseract`（若已安装） | Pillow |
 
-探测顺序为 `winrt` → `python`。若两者都无法识别文字，守卫**仍然脱敏全部文本、仍然按区域涂改图片**，只丢失「读取画面内文字」这一项。
-
-显式指定（自动探测判断有误时）：
+探测顺序 `winrt → python`。都不可用时仍能脱敏全部文本，仍能按区域涂改图片，
+只失去「读出画面里的文字」这一步。
 
 ```yaml
 config:
   imageBackend: python        # auto | winrt | python | none
   pythonPath: /usr/bin/python3
   tesseractPath: /usr/bin/tesseract
-  ocrLanguage: zh-Hans-CN     # winrt 使用
-  tesseractLanguage: chi_sim+eng
 ```
 
-`imageBackend: none` 完全关闭图片分析，文本脱敏不受影响。
+### 识别引擎的坑
 
-### 3.2 识别引擎的坑
+Windows 中文引擎对每个词都返回 `0.000` 置信度，无法用阈值判断，因此改为按文本形态判定：
+符号占比过高或有效字符不足两个时标记不可信并跳过。它还会在中文之间插空格、拆断 ASCII 串；
+中文空格会合并，ASCII 空格保留（否则 `hello world` 会变成 `helloworld`），
+被拆断的密钥由跨空格规则匹配。
 
-Windows 中文识别器对每个词都返回 `0.000` 置信度，无法用阈值判断。因此改用**文本形态**判定：符号占比过高、或有效字符不足两个的行，标记为 `【⚠️OCR识别不可靠】` 并跳过。
+## 旁路与子代理
 
-它还会在汉字之间插入空格，并可能把 ASCII token 拆断（`sk-abcdefghijklmnopl 234`）。处理方式：
+- **旁路检测**：没有会话归属的请求不是 Agent 循环构建的，标记 `【⚠️旁路风险】`，仍然审计。
+- **子代理继承**：插件全局挂载，子代理请求走同一套挂载点，无需额外配置。
+- **独立计数**：告警按会话独立累计，子代理不与主会话共享命中统计。
 
-- 归一化只合并**汉字之间**的空格；
-- ASCII 空格**不动**——无差别合并会把 `hello world` 变成 `helloworld`；
-- 被拆断的 token 由 `ocr-split-secret` 规则**跨空格匹配**解决。
+## 限流与兜底
 
-### 3.3 不可逆涂改
-
-命中的整行会被不透明填充覆盖，图片块改指向涂改后的副本。不可逆由三点共同保证：
-
-1. **不透明填充** —— 没有图层、透明度或混合模式，底层像素不可达；
-2. **整图重新编码** —— 覆盖区域的原始扫描行在输出文件中完全不存在；
-3. **保存时不写元数据** —— EXIF/GPS/机型不会回来。
-
-实测：覆盖后用同一引擎重新识别，输出为 **0 行文字**。
-
-> **做不到的事：** 附件存储是内容寻址且不可变的，原始文件仍留在 `$DSH_HOME/attachments`。涂改改变的是**模型收到的内容**，不是**宿主保留的内容**。能访问本机文件系统的人仍可打开原图。
-
----
-
-## 四、二维码
-
-二维码载荷在进程内用 `jsqr` 解码，并按文本规则脱敏。命中记为 `【⚠️二维码命中】`。
-
-二维码本身**不涂改**：覆盖会毁掉整个码，且二维码是单一区块而非行结构。解码失败记为 `【⚠️二维码解析异常】`，图片放行。
-
-`jsqr` 是可选依赖。没有它时跳过二维码检测，其余能力全部正常。
-
----
-
-## 五、二进制与压缩包
-
-zip、rar、7z、gzip、pdf，以及前导窗口含 NUL 字节的文件，一律视为不透明内容。
-
-理由：在压缩包或 base64 块里「脱敏」一个偶然的字节序列，只会破坏文件而不会隐藏任何东西。因此记为 `【⚠️放行-二进制内容】`，字节原样保留。
-
----
-
-## 六、旁路检测
-
-没有 sessionId 的模型请求，不是由 Agent 循环为某个已知会话构建的——这是一条绕过正常路径的直连调用。它**仍会被审计**，旁路行为记为 `【⚠️旁路风险】`。
-
-## 七、子代理继承
-
-插件全局挂载，子代理的请求经过**同一套** `agent/pre-step`、`tools/post-execute`、`llm/stream` 监听，无需任何按代理的配置。没有独立的子代理开关，因为不存在需要单独覆盖的独立路径。
-
----
-
-## 八、URL 脱敏分级
-
-把公网域名全部替换会让模型读不懂上下文，因此 `maskUrls` 有三档：
-
-| 取值 | 效果 |
+| 项目 | 行为 |
 |---|---|
-| `false`（默认） | 不处理 |
-| `'internal'` | **只处理** `internal`、`local`、`lan`、`corp`、`intra`、`private`、`svc`、`home` 后缀的主机 |
-| `'all'` | 所有域名，含公网 |
+| 单轮图片 | 最多 3 张做 OCR，超出部分标记 `【⚠️放行-OCR超限】` |
+| 正则 / OCR / 二维码异常 | 标记风险，不中断，继续流转 |
+| 连续 6 次高风险 | 输出 `【⚠️告警】` |
+| 二进制 / 压缩包 | 标记 `【⚠️放行-二进制内容】`，不解析内部，放行 |
 
-`privateUrlSuffixes` 可替换内置内网后缀列表。**推荐用 `'internal'`**：内网地址被脱敏，`github.com` 保持可读。
+任何内部异常都返回原决策，守卫本身绝不弄坏一个回合。
 
----
+## 日志
 
-## 九、配置项
+| 日志 | 含义 |
+|---|---|
+| `【⚠️已脱敏-高风险】` | 命中高风险规则 |
+| `【⚠️已脱敏-普通】` | 命中普通规则 |
+| `【✅无敏感】` | 本轮无命中 |
+| `【⚠️已脱敏-高风险】[对话明文] 命中=密码` | 标注挂载点与命中类型 |
 
-| 字段 | 默认值 | 含义 |
+日志只输出占位符与计数，**不输出原文**。
+
+## 占位符稳定性
+
+同一个值在同一会话内恒定得到同一个占位符，防止上下文错乱。注册表只存 SHA-256 摘要，
+不存明文。占位符一经写入，后续规则不再匹配，因此同一个值只替换一次。
+
+## 配置项
+
+| 字段 | 默认 | 含义 |
 |---|---|---|
 | `enabled` | `true` | 总开关 |
-| `maskUserMessages` | `true` | 在 `agent/pre-step` 脱敏用户文本 |
-| `maskToolResults` | `true` | 在 `tools/post-execute` 脱敏工具输出 |
-| `maskUrls` | `false` | `false`、`internal`、`all` |
-| `privateUrlSuffixes` | 内置 | 内网主机后缀 |
-| `maskDbCredentials` | `true` | 脱敏数据库连接串 |
-| `auditRequests` | `true` | 派发时报告残余命中 |
-| `highRiskAlertAfter` | `6` | 连续命中高风险多少次后告警 |
-| `maxImagesPerTurn` | `3` | 单轮图片超过此数记告警 |
-| `ocr` | `true` | 是否分析图片 |
-| `imageBackend` | `auto` | `auto`、`winrt`、`python`、`none` |
+| `mode` | `mask` | `mask` 脱敏放行 / `block` 严格阻断 |
+| `blockOnRisk` | `high` | 严格模式的触发等级 |
+| `maskUserMessages` | `true` | 脱敏用户输入 |
+| `maskToolResults` | `true` | 脱敏工具输出 |
+| `maskResponses` | `true` | 脱敏模型返回 |
+| `auditRequests` | `true` | 审计即将发出的请求 |
+| `detectHighEntropy` | `true` | 高熵兜底识别 |
+| `detectAddresses` | `true` | 住址识别 |
+| `detectMedical` | `true` | 病历识别 |
+| `detectQr` | `true` | 二维码解码 |
+| `detectBypass` | `true` | 旁路检测 |
+| `markBinary` | `true` | 二进制标记 |
+| `maskDbCredentials` | `true` | 数据库连接串 |
+| `maskUrls` | `false` | `false` / `internal` / `all` |
+| `privateUrlSuffixes` | 内置 | 内网后缀列表 |
+| `whitelist` | 内置 | 白名单 |
+| `sessionWhitelist` | `[]` | 会话临时白名单 |
+| `logMasks` | `true` | 输出脱敏日志 |
+| `highRiskAlertAfter` | `6` | 连续高危告警阈值 |
+| `disabledRules` | `[]` | 禁用的规则 id |
+| `maxImagesPerTurn` | `3` | 图片数量告警阈值 |
+| `ocr` | `true` | 图片分析总开关 |
+| `imageBackend` | `auto` | `auto` / `winrt` / `python` / `none` |
 | `pythonPath` | PATH 查找 | Python 解释器 |
 | `tesseractPath` | PATH 查找 | Tesseract 可执行文件 |
 | `ocrLanguage` | `zh-Hans-CN` | WinRT 语言标签 |
 | `tesseractLanguage` | `chi_sim+eng` | Tesseract 语言包 |
-| `ocrTimeoutMs` | `20000` | 单张图片超时 |
-| `ocrMaxImagesPerTurn` | `3` | 每步分析图片数上限 |
-| `redactImages` | `true` | 用不透明填充覆盖敏感文字 |
-| `redactColor` | `#000000` | 填充色，`#RRGGBB` |
-| `detectAddresses` | `true` | 脱敏住址形态的文本 |
-| `detectMedical` | `true` | 脱敏病历标记 |
-| `detectQr` | `true` | 解码并脱敏二维码载荷 |
-| `markBinary` | `true` | 标记压缩包与二进制文件，从不解析内部 |
-| `detectBypass` | `true` | 报告无 sessionId 的请求 |
-| `compressImages` | `true` | 上传前降分辨率 |
-| `compressMaxDimension` | `2048` | 长边像素上限 |
-| `disabledRules` | `[]` | 要跳过的规则 id |
-| `whitelist` | 内置示例值 | 永不脱敏的值 |
-| `logMasks` | `true` | 记录标记但不含原值 |
+| `ocrTimeoutMs` | `20000` | 单图超时 |
+| `ocrMaxImagesPerTurn` | `3` | 单轮 OCR 上限 |
+| `redactImages` | `true` | 不可逆涂改 |
+| `redactColor` | `#000000` | 涂改颜色 |
+| `compressImages` | `true` | 压缩分辨率 |
+| `compressMaxDimension` | `2048` | 长边上限 |
 
----
+## URL 脱敏分级
 
-## 十、换机使用
+| 值 | 效果 |
+|---|---|
+| `false`（默认） | 不处理 |
+| `internal` | 只脱 `.internal` `.local` `.lan` `.corp` `.intra` `.private` `.svc` `.home` |
+| `all` | 全部域名，含公网 |
 
-复制整个插件目录，然后：
+推荐 `internal`：内网地址被脱敏，`github.com` 保持可读。
 
-1. `npm install` —— 安装 `jsqr`。跳过则二维码检测不可用；
-2. `node ocr/selfcheck.mjs` —— 打印本机能力清单；
-3. 若在非 Windows 平台需要图片文字识别，安装 Pillow（`pip install pillow`）和对应语言包的 tesseract。
+## 换机使用
 
-自检逐项输出 `OK` / `WARN` / `MISS`，只有真实故障才返回非零退出码，可直接用于脚本。`--json` 输出结构化结果。
+1. 复制整个目录。
+2. `npm install` 安装 `jsqr`（跳过则二维码检测失效，其余功能正常）。
+3. `node ocr/selfcheck.mjs` 查看本机能力。
+4. 需要图像文字识别时：非 Windows 安装 Pillow（`pip install pillow`）与 tesseract 及语言包。
 
----
+自检按能力输出 `OK` / `WARN` / `MISS`，只有真实故障才返回非零，可进脚本。
+`--json` 输出结构化结果。
 
-## 十一、保证与边界
+## 校验约束
 
-- 替换是**单次正向**的。原值不保存、不还原、不记录。
-- 会话占位符注册表只保留每个值的 **SHA-256 摘要**，绝不保留原值。因此同一会话内同一密钥始终得到同一占位符，而明文不会被留存。
-- 插件只能约束**本 Host 构建的请求**。它无法关闭第三方中转网关的日志——那是网关侧的配置。
-- 规则基于模式匹配，覆盖上文列出的格式，不覆盖所有可能的写法。请按自己的语料补充规则或使用 `disabledRules`。
-- 住址与病历检测**刻意收窄**：只对行政区划链和临床标记触发，宁可牺牲召回率，也不误伤普通叙述。
+- 只替换敏感值，保留代码结构、注释、变量名，不破坏插件安装与代码审计流水线。
+- 仅内存瞬时替换，不反向还原、不持久保存原始明文；日志只存摘要。
+- 脱敏完成后正常进入路由、重试、中转调度。
 
----
+## 做不到的事
 
-## 十二、许可证
+- **中转侧 payload 日志**：需在网关配置中关闭，插件无权控制。
+- **磁盘原图抹除**：附件存储内容寻址且不可变。
+- **流式增量已显示原文**：响应侧脱敏在块闭合时生效，进入日志与后续请求的内容是脱敏后的，
+  但已经渲染到界面的增量不会回溯。
+- **正则的固有局限**：规则覆盖列出的格式，不覆盖所有可能的写法。
 
-MIT，见 [LICENSE](LICENSE)。
+## 许可证
+
+MIT

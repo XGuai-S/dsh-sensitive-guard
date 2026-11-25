@@ -1,84 +1,60 @@
-# dsh-sensitive-guard · 敏感内容守卫
+# 敏感内容守卫 / Sensitive content guard
 
-[English](README.en.md) | [简体中文](README.zh.md)
+DeepSeek Harness 的请求前置守卫：在内容发往中转网关之前完成识别、脱敏与拦截判定。
+A pre-gateway guard for DeepSeek Harness that recognizes, masks, and optionally blocks
+sensitive content before a request leaves the machine.
+
+**中文文档** → [README.zh.md](README.zh.md)
+**English documentation** → [README.en.md](README.en.md)
 
 ---
 
-## 中文
+## 一句话说明 / In one line
 
-DeepSeek Harness 的宿主插件：在模型请求离开本机、发往中转网关之前，把敏感内容替换为占位符。**不阻断任何请求**，不中断任务，不抛异常。
+默认**脱敏放行**：命中即替换为占位符，任务不中断；可切换**严格阻断**模式。
+Default is **mask-and-pass**: a hit becomes a placeholder and the task continues.
+A **strict block** mode is available.
 
-完整中文文档见 **[README.zh.md](README.zh.md)**。
-
-### 一句话能力
-
-| 能力 | 说明 |
-|---|---|
-| 文本脱敏 | 密钥、身份隐私、住址、病历、系统凭证、本地路径、设备号、邮箱、IP、私有域名 → 占位符 |
-| 图片文字 | Windows 用系统自带 OCR，其他平台用 Python + tesseract；无引擎时仍涂改图片 |
-| 不可逆涂改 | 命中整行不透明覆盖 + 整图重编码 + 不写元数据 |
-| 二维码 | `jsqr` 解码后按文本规则脱敏 |
-| 二进制标记 | 压缩包/二进制只标记，不解析、不破坏 |
-| 换机自检 | `node ocr/selfcheck.mjs` 报告本机能力 |
-
-### 快速开始
+## 快速开始 / Quick start
 
 ```bash
-npm install                  # 安装 jsqr
-node ocr/selfcheck.mjs       # 查看本机具备哪些能力
-npm test                     # 46 项回归测试
+npm install                  # 安装 jsqr / install jsqr
+node ocr/selfcheck.mjs       # 本机能力自检 / what works here
+npm test                     # 104 项回归 / regression suite
 ```
 
----
+在 DSH 的 **插件 → 添加插件** 中安装本目录，或用 `plugin_manager install_bundle`。
+Install this directory through **Plugins → Add plugin**, or with
+`plugin_manager install_bundle`.
 
-## English
+## 能力概览 / Capabilities
 
-A Host plugin for DeepSeek Harness that masks sensitive values before a model
-request reaches a provider adapter, reads text and QR payloads out of images,
-and never blocks a turn.
-
-Full English documentation: **[README.en.md](README.en.md)**.
-
-### Capabilities at a glance
-
-| Capability | Detail |
+| 能力 Capability | 状态 Status |
 |---|---|
-| Text masking | secrets, PII, addresses, medical records, credentials, local paths, device ids, emails, IPs, private domains → placeholders |
-| Image text | WinRT OCR on Windows, Python + tesseract elsewhere; still redacts when no recognizer exists |
-| Irreversible redaction | opaque fill over the matched line + full re-encode + no metadata |
-| QR codes | decoded with `jsqr`, then masked by the text rules |
-| Binary marking | archives and binaries are reported, never parsed or damaged |
-| Portability check | `node ocr/selfcheck.mjs` reports what this machine can do |
+| 明文密钥、身份隐私、系统凭证、验证码 | ✅ |
+| 高熵可疑长串（排除端口/版本/哈希） | ✅ |
+| JSON / YAML / properties / gradle 结构化替换 | ✅ |
+| 双向扫描（请求侧 + 响应侧） | ✅ |
+| 严格阻断模式 | ✅ |
+| 白名单 + 会话临时白名单 | ✅ |
+| 图片 OCR、二维码、不可逆涂改、压缩 | ✅ |
+| 二进制与压缩包标记放行 | ✅ |
+| 旁路检测、子代理继承、独立计数 | ✅ |
+| Windows WinRT 后端 / 跨平台 Python 后端 | ✅ |
 
-### Quick start
+## 已知边界 / Known limits
 
-```bash
-npm install                  # jsqr
-node ocr/selfcheck.mjs       # what works here
-npm test                     # 46-case regression suite
-```
+- 图片内的文字无法就地改写：命中行用不透明填充覆盖后重新编码，模型看不到被覆盖内容，
+  但 `$DSH_HOME/attachments` 下的原始文件仍在（内容寻址存储不可变）。
+- 中转侧 payload 日志需在网关配置中关闭，插件无权控制。
+- 响应侧脱敏在块闭合时生效；流式增量可能已显示过原文，进入会话日志与后续请求的内容是脱敏后的。
 
----
-
-## 结构 / Layout
-
-```
-index.js              插件主体：规则表、脱敏、三个挂载点
-ocr/backend.js        后端选择（winrt / python）
-ocr/runner.js         图像操作门面
-ocr/normalize.js      OCR 文本归一化与可信度判定
-ocr/detect.js         住址、病历、姓名+证件、二进制、二维码
-ocr/redact.js         涂改框合并与外扩
-ocr/imgops.py         跨平台图像后端（Pillow）
-ocr/win-*.ps1         Windows 后端（WinRT）
-ocr/selfcheck.mjs     换机自检
-test/regression.mjs   46 项回归测试
-locale/               插件显示名与描述
-docs/                 详情页配图与文档
-```
-
----
+- Text inside a raster cannot be edited in place: hit lines are covered by an opaque
+  fill and re-encoded. The original file remains in the content-addressed store.
+- Gateway-side payload logging is outside this plugin's control.
+- Response masking applies when a block closes; the durable log and later requests
+  see the masked text, while an already-rendered delta may have shown the original.
 
 ## 许可证 / License
 
-MIT，见 [LICENSE](LICENSE)。
+MIT

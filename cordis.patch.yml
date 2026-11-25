@@ -3,13 +3,35 @@
       name: 'dsh-sensitive-guard'
       config:
         enabled: true
+        # 模式：mask 脱敏放行（默认）| block 严格阻断
+        mode: mask
+        blockOnRisk: high
+
+        # 双向扫描：请求侧与响应侧
         maskUserMessages: true
         maskToolResults: true
-        maskDbCredentials: true
-        highRiskAlertAfter: 6
-        maxImagesPerTurn: 3
+        maskResponses: true
         auditRequests: true
-        # Image analysis. 'auto' tries winrt on Windows, then python elsewhere.
+
+        # 识别细则
+        detectHighEntropy: true
+        detectAddresses: true
+        detectMedical: true
+        detectQr: true
+        detectBypass: true
+        markBinary: true
+        maskDbCredentials: true
+
+        # URL 分级：false | internal | all
+        maskUrls: false
+
+        # 日志与告警
+        logMasks: true
+        highRiskAlertAfter: 6
+        perSessionStats: true
+
+        # 图片
+        maxImagesPerTurn: 3
         ocr: true
         imageBackend: auto
         ocrLanguage: zh-Hans-CN
@@ -18,12 +40,8 @@
         ocrMaxImagesPerTurn: 3
         redactImages: true
         redactColor: '#000000'
-        detectAddresses: true
-        detectMedical: true
-        detectQr: true
-        markBinary: true
-        detectBypass: true
         compressImages: true
         compressMaxDimension: 2048
-        # false | 'internal' (non-public hosts only) | 'all'
-        maskUrls: false
+
+        # 会话临时白名单（误判内容，当前会话不再脱敏）
+        sessionWhitelist: []

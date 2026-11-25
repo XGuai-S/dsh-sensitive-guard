@@ -99,8 +99,9 @@ const MEDICAL_RULES = [
     id: 'medical-record',
     risk: 'high',
     to: PRIVACY_PAIR,
-    // Label plus value. The value must not be a passport-shaped token, because
-    // the passport rule runs first and would already have replaced it.
+    // 标签 + 取值。取值不能是证件号或护照号，那些规则已经先跑过。
+    // Label plus value; the value must not be an id or passport shape, because
+    // those rules run earlier and would already have replaced it.
     re: /(?:门诊号|住院号|病案号|病历号|检查报告|检验报告|处方|主诉|现病史|既往史|手术记录)\s*[:：]\s*(?![A-Z]{1,2}\d{7,8}\b)(?![\d\s]{15,19}(?!\d))[^\s，。;；]{3,}/g,
   },
   {
@@ -108,6 +109,15 @@ const MEDICAL_RULES = [
     risk: 'high',
     to: PRIVACY_PAIR,
     re: /(?:诊断|结论|病理)\s*[:：]\s*[\u4e00-\u9fffA-Za-z0-9，,、\s]{4,40}/g,
+  },
+  {
+    id: 'medical-id',
+    risk: 'high',
+    to: PRIVACY_PAIR,
+    // 兜底：标签后跟任意字母数字组合（含被护照规则抢先的情况）。
+    // Fallback: a label followed by any alphanumeric run, including values the
+    // passport rule would otherwise claim first.
+    re: /(?:门诊号|住院号|病案号|病历号)\s*[:：]\s*[A-Za-z0-9]{4,}/g,
   },
 ];
 

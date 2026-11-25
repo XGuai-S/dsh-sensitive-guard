@@ -1,265 +1,264 @@
-# dsh-sensitive-guard · Sensitive content guard
+# Sensitive content guard
 
-**English** | [简体中文](README.zh.md)
+A pre-gateway guard for DeepSeek Harness: it recognizes, masks, and optionally blocks
+sensitive content before a request leaves the machine. It runs ahead of routing, retry,
+and dispatch, with no interaction and no prompting.
 
-A Host plugin for DeepSeek Harness that masks sensitive values before a model
-request reaches a provider adapter, reads text and QR payloads out of images,
-and never blocks a turn.
+## Two modes
 
-Designed to move between machines: nothing is hard-wired to one host, and a
-self-check reports exactly what the current machine can do.
+| Mode | Behaviour |
+|---|---|
+| `mask` (default) | Mask and pass: a hit becomes a placeholder, the task continues, only the log carries a risk level |
+| `block` | Strict: a high-risk hit raises `CONTENT_REFUSED`, no request is sent and no body is produced |
 
----
-
-## Quick start
-
-```bash
-# In the bundle directory, on the machine that will run it:
-npm install                  # jsqr
-node ocr/selfcheck.mjs       # what works here
+```yaml
+config:
+  mode: block
+  blockOnRisk: high    # high | normal
 ```
 
-Install the directory as a bundle through **Plugins → Add plugin**, or with
-`plugin_manager install_bundle`.
+## Both directions
 
----
-
-## 1. What it does
-
-**One outcome: mask.** Every match is replaced with a placeholder and the
-request continues through routing, retry, and dispatch. There is no refusal
-branch; only the log carries a risk level.
-
-| Value | Placeholder | Risk |
+| Direction | Hook | Effect |
 |---|---|---|
-| APIKEY, private keys, `sk-`, `ghp_`, `glpat-`, Bearer, JWT, `storePassword`, pkcs12 | `{{SECRET_TOKEN}}` | high |
-| national id, phone, bank card, passport | `{{PRIVACY_ID}}` | high |
-| name adjacent to a national id | `{{PRIVACY_ID}}` | high |
-| address (administrative chain or street number) | `{{PRIVACY_ID}}` | high |
-| medical record number, diagnosis line | `{{PRIVACY_ID}}` | high |
-| adb/root/wifi/db passwords, 2FA codes, cookies, session ids, signed login links | `{{CRED_CODE}}` | high |
-| database connection strings | `{{DB_CRED}}` | high |
-| local absolute paths | `{{LOCAL_PATH}}` | normal |
-| IMEI, Android ID, serial numbers | `{{DEVICE_ID}}` | normal |
-| email addresses | `{{EMAIL_ADDR}}` | normal |
-| internal and public IPs | `{{NET_IP}}` | normal |
-| private domains and repo addresses (opt-in) | `{{PRIVATE_URL}}` | normal |
+| Request | `agent/pre-step` | masks user input before it enters a step; analyzes attached images |
+| Request | `tools/post-execute` | masks tool output before it is recorded |
+| Request | `llm/stream` | audits the outgoing request and reports residual hits |
+| Response | `llm/stream` | masks model output blocks as they close |
 
-**One hard rule:** a placeholder written by one rule is never re-matched by a
-later rule. A value is replaced exactly once and never gains a `_2` variant.
+Why response masking works: DSH's `BlockAssembler` replaces accumulated `text-delta`
+content with the block carried by `block-end`. Emitting a rewritten `block-end`
+therefore changes what downstream sees, without touching deltas already delivered.
 
-### Whitelist
+## Masking map
 
-`test-key`, `demo-sk`, `example-token`, `placeholder`, `mock-secret` are
-documentation samples; they are skipped and never marked or masked.
-
----
-
-## 2. Where it hooks
-
-| Event | Effect |
+| Value | Placeholder |
 |---|---|
-| `agent/pre-step` | masks user message text as it enters a step; analyzes attached images |
-| `tools/post-execute` | masks tool output before it is recorded and replayed |
-| `llm/stream` | **audit only**; a loop-built request is deep-frozen, so it is read and reported, never rewritten |
+| keys, private keys, Bearer, JWT, high-entropy strings | `{{SECRET_TOKEN}}` |
+| national id, phone, bank card, passport, address, medical record, name+id | `{{PRIVACY_ID}}` |
+| account and database passwords, wifi password, cookies, session ids, signed links | `{{CRED_CODE}}` |
+| one-time codes (keyword plus 4–6 digits) | `{{ONE_TIME_CODE}}` |
+| local absolute paths | `{{LOCAL_PATH}}` |
+| IMEI, Android ID, serial numbers | `{{DEVICE_ID}}` |
+| email addresses | `{{EMAIL_ADDR}}` |
+| internal and public IPs | `{{NET_IP}}` |
+| private domains and internal hosts | `{{PRIVATE_URL}}` |
+| database connection credentials | `{{DB_CRED}}` |
 
-Every listener **fails open**: an internal error returns the caller's decision
-unchanged, so the guard can never break a turn.
+## Detection rules
 
----
+### Key-value credentials
 
-## 3. Image handling
+Keywords such as `password`, `pwd`, `secret`, `token`, `key`, `apikey`, `access_key`,
+`bearer`, `账号`, `密码` followed by `=`, `:`, or a quote mark the next value as a
+credential. **Only the value is replaced**, so JSON, YAML, properties, and gradle
+structure survives.
 
-### 3.1 Two backends
+```json
+{"password":"mySecret123"}  →  {"password":"{{CRED_CODE}}"}
+```
 
-Two backends implement the same five operations. The plugin picks one at
-startup and logs which is live.
+### Fixed-prefix keys
+
+Strings beginning with `sk-`, `sk-proj-`, `sk-ant-`, `ghp_`, `github_pat_`, `glpat-`,
+`AKIA`, `AIza`, `hf_`, or `eyJ` are treated as API keys.
+
+### High-entropy fallback
+
+An unmarked, unprefixed random-looking run of at least 24 characters is treated as a
+suspicious credential when all of these hold:
+
+- at least three character classes (lower, upper, digit, symbol)
+- at least 12 distinct characters
+- Shannon entropy of at least 3.0 bits per character
+
+A hit is labelled `【⚠️高熵可疑密钥】` and masked.
+
+### Exclusions
+
+These are **not** credentials: ports (1–65535), version numbers (`1.2.3`,
+`v2.0.0-beta.1`), and MD5 / SHA-1 / SHA-256 / SHA-512 hex digests.
+
+## Whitelist
+
+Built in: `test-key`, `demo-sk`, `example-token`, `placeholder`, `mock-secret`, `md5`,
+`sha256`. A whitelisted value is never recognized, labelled, or masked. The test applies
+to the replaced value, not the whole match, so `apikey=test-key` survives intact.
+
+A session-scoped list marks false positives:
+
+```yaml
+config:
+  sessionWhitelist:
+    - myFalsePositive
+```
+
+## Images
+
+1. EXIF (GPS, capture time, device model, serial) is removed before upload by
+   `dsh-attachment-local` at admission.
+2. Local OCR reads text inside the picture; the result goes through the same rules.
+3. QR payloads are decoded and masked.
+4. A failed, garbled, or low-confidence read is labelled `【⚠️OCR识别不可靠】` and the
+   image passes.
+5. Images are downscaled; the original resolution is not uploaded.
+
+### Irreversible redaction
+
+A line that hits a rule is covered by an opaque fill, then the whole image is re-encoded.
+Three things together make it irreversible:
+
+1. **Opaque fill** — no layer, alpha, or blend keeps the pixels reachable.
+2. **Full re-encode** — no source scanline of the covered region survives.
+3. **No metadata on save** — EXIF, GPS, and camera fields do not return.
+
+Verified: after covering, the same engine recognizes zero lines in the output.
+
+**Limit:** the original file remains under `$DSH_HOME/attachments`, which is
+content-addressed and immutable. Redaction changes what the model receives, not what the
+host keeps.
+
+### Two backends
 
 | Backend | Platform | Recognition | Pixels, redaction, scaling |
 |---|---|---|---|
-| `winrt` | Windows | `Windows.Media.Ocr`, built into the OS | WinRT imaging |
-| `python` | any | `tesseract` CLI, if installed | Pillow |
+| `winrt` | Windows | built-in `Windows.Media.Ocr` | WinRT imaging |
+| `python` | any | `tesseract` if installed | Pillow |
 
-Selection order is `winrt` then `python`. If neither can recognize text, the
-guard **still masks all text and still redacts images by region** — only the
-"read the words inside the picture" step is lost.
-
-Configure explicitly when auto-selection guesses wrong:
+Probe order is `winrt` then `python`. When neither recognizes text, all text is still
+masked and images are still redacted by region; only reading the words is lost.
 
 ```yaml
 config:
   imageBackend: python        # auto | winrt | python | none
   pythonPath: /usr/bin/python3
   tesseractPath: /usr/bin/tesseract
-  ocrLanguage: zh-Hans-CN     # winrt
-  tesseractLanguage: chi_sim+eng
 ```
 
-`imageBackend: none` disables image analysis entirely; text masking is
-unaffected.
+### Recognizer caveats
 
-### 3.2 Recognizer caveats
+The Windows Chinese recognizer reports `0.000` confidence for every word, so reliability
+is judged by text shape: a line that is mostly symbols, or shorter than two meaningful
+characters, is labelled unreliable and skipped. It also inserts spaces between CJK
+characters and can split an ASCII token. CJK spacing is collapsed; ASCII spacing is kept,
+because joining it would turn `hello world` into `helloworld`. A split token is matched
+across the space by a dedicated rule.
 
-The Windows Chinese recognizer reports `0.000` confidence for every word, so
-reliability is judged by text shape instead: a line that is mostly symbols, or
-shorter than two meaningful characters, is reported as `【⚠️OCR识别不可靠】` and
-skipped.
+## Bypass and subagents
 
-It also inserts a space between CJK characters and can split an ASCII token
-(`sk-abcdefghijklmnopl 234`). Handling:
+- **Bypass detection**: a request with no session id was not built by the agent loop. It
+  is labelled `【⚠️旁路风险】` and still audited.
+- **Subagent inheritance**: the plugin mounts globally, so a subagent's requests pass
+  through the same hooks with no extra configuration.
+- **Independent counting**: alerts accumulate per session; a subagent does not share the
+  parent's hit statistics.
 
-- normalization collapses **CJK-only** spacing;
-- ASCII gaps are left alone — joining them would turn `hello world` into
-  `helloworld`;
-- the split-token case is matched across the space by the `ocr-split-secret`
-  rule instead.
+## Limits and fallbacks
 
-### 3.3 Irreversible redaction
-
-A recognized line that hits a rule is covered, and the image block is repointed
-at the redacted copy. Three things make it irreversible:
-
-1. An **opaque fill** over the rectangle. No layer, alpha, or blend keeps the
-   original pixels reachable behind it.
-2. A **full re-encode** from the modified raster, so no source scanline of the
-   covered region survives in the output file.
-3. **No metadata** on save, so EXIF/GPS/camera fields do not return.
-
-Verified on a fixture: after covering, the same engine recognizes **zero lines**
-in the output.
-
-> **What this cannot do:** the stored attachment is content-addressed and
-> immutable, so the original file remains on disk under `$DSH_HOME/attachments`.
-> Redaction changes what the **model receives**, not what the **host keeps**.
-> Someone with local filesystem access can still open the original.
-
----
-
-## 4. QR codes
-
-A QR payload is decoded in process with `jsqr` and masked as text. A hit is
-reported as `【⚠️二维码命中】`.
-
-The code itself is **not edited**: covering it would destroy it, and a QR is a
-single block rather than a line. A decode failure is reported as
-`【⚠️二维码解析异常】` and the image passes.
-
-`jsqr` is an optional dependency. Without it, QR detection is skipped and every
-other capability still works.
-
----
-
-## 5. Binary and archive content
-
-A zip, rar, 7z, gzip, pdf, or any file with a NUL byte in its leading window is
-treated as opaque.
-
-Rationale: masking a chance byte sequence inside an archive or base64 blob would
-corrupt the file without hiding anything. The risk is reported as
-`【⚠️放行-二进制内容】` and the bytes are left untouched.
-
----
-
-## 6. Bypass detection
-
-A model request with no session id was not built by the agent loop for an
-observed session: a direct call that skipped the normal path. It is **still
-audited**, and the bypass is recorded as `【⚠️旁路风险】`.
-
-## 7. Subagent inheritance
-
-The plugin mounts globally, so a subagent's requests pass through the **same**
-`agent/pre-step`, `tools/post-execute`, and `llm/stream` listeners with no
-per-agent configuration. There is no separate subagent switch because there is
-no separate path to cover.
-
----
-
-## 8. URL masking levels
-
-Masking every public domain makes the model unable to read context, so
-`maskUrls` has three levels:
-
-| Value | Effect |
+| Item | Behaviour |
 |---|---|
-| `false` (default) | nothing |
-| `'internal'` | **only** hosts under `internal`, `local`, `lan`, `corp`, `intra`, `private`, `svc`, `home` |
-| `'all'` | every domain, public ones included |
+| Images per turn | at most 3 are OCRed; the rest are labelled `【⚠️放行-OCR超限】` |
+| Regex / OCR / QR failure | risk is labelled, the turn continues |
+| Six consecutive high-risk hits | `【⚠️告警】` is emitted |
+| Binary and archive content | labelled `【⚠️放行-二进制内容】`, never parsed, passed through |
 
-`privateUrlSuffixes` replaces the built-in internal list. **`'internal'` is the
-recommended setting**: internal addresses are masked while `github.com` stays
-readable.
+Any internal error returns the caller's decision unchanged; the guard never breaks a turn.
 
----
+## Logs
 
-## 9. Configuration
+| Log | Meaning |
+|---|---|
+| `【⚠️已脱敏-高风险】` | a high-risk rule hit |
+| `【⚠️已脱敏-普通】` | a normal rule hit |
+| `【✅无敏感】` | nothing matched |
+| `【⚠️已脱敏-高风险】[对话明文] 命中=密码` | hook and hit kind |
+
+The log carries placeholders and counts only, **never the original value**.
+
+## Placeholder stability
+
+The same value always maps to the same placeholder within a session, so the model's
+context stays coherent. The registry stores a SHA-256 digest, never the value. A written
+placeholder is never re-matched, so a value is replaced exactly once.
+
+## Configuration
 
 | Field | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | Master switch |
-| `maskUserMessages` | `true` | Mask user text at `agent/pre-step` |
-| `maskToolResults` | `true` | Mask tool output at `tools/post-execute` |
-| `maskUrls` | `false` | `false`, `internal`, or `all` |
-| `privateUrlSuffixes` | built-in | Internal host suffixes |
-| `maskDbCredentials` | `true` | Mask database connection strings |
-| `auditRequests` | `true` | Report residual matches at dispatch |
-| `highRiskAlertAfter` | `6` | Warn after this many consecutive high-risk masks |
-| `maxImagesPerTurn` | `3` | Warn when a request carries more images |
-| `ocr` | `true` | Analyze images at all |
-| `imageBackend` | `auto` | `auto`, `winrt`, `python`, `none` |
+| `mode` | `mask` | `mask` or `block` |
+| `blockOnRisk` | `high` | Trigger level for strict mode |
+| `maskUserMessages` | `true` | Mask user input |
+| `maskToolResults` | `true` | Mask tool output |
+| `maskResponses` | `true` | Mask model output |
+| `auditRequests` | `true` | Audit the outgoing request |
+| `detectHighEntropy` | `true` | Entropy fallback |
+| `detectAddresses` | `true` | Address detection |
+| `detectMedical` | `true` | Medical record detection |
+| `detectQr` | `true` | QR decoding |
+| `detectBypass` | `true` | Bypass detection |
+| `markBinary` | `true` | Binary labelling |
+| `maskDbCredentials` | `true` | Database connection strings |
+| `maskUrls` | `false` | `false` / `internal` / `all` |
+| `privateUrlSuffixes` | built in | Internal host suffixes |
+| `whitelist` | built in | Never masked |
+| `sessionWhitelist` | `[]` | Session-scoped false positives |
+| `logMasks` | `true` | Emit masking logs |
+| `highRiskAlertAfter` | `6` | Consecutive high-risk alert threshold |
+| `disabledRules` | `[]` | Rule ids to skip |
+| `maxImagesPerTurn` | `3` | Image count warning |
+| `ocr` | `true` | Image analysis master switch |
+| `imageBackend` | `auto` | `auto` / `winrt` / `python` / `none` |
 | `pythonPath` | PATH lookup | Python interpreter |
 | `tesseractPath` | PATH lookup | Tesseract binary |
 | `ocrLanguage` | `zh-Hans-CN` | WinRT language tag |
 | `tesseractLanguage` | `chi_sim+eng` | Tesseract language pack |
 | `ocrTimeoutMs` | `20000` | Per-image deadline |
-| `ocrMaxImagesPerTurn` | `3` | Images analyzed per step |
-| `redactImages` | `true` | Cover sensitive text with an opaque fill |
-| `redactColor` | `#000000` | Fill color, `#RRGGBB` |
-| `detectAddresses` | `true` | Mask address-shaped runs |
-| `detectMedical` | `true` | Mask medical record markers |
-| `detectQr` | `true` | Decode and mask QR payloads |
-| `markBinary` | `true` | Report archives and binary files, never parse them |
-| `detectBypass` | `true` | Report requests with no session id |
-| `compressImages` | `true` | Downscale before upload |
-| `compressMaxDimension` | `2048` | Long-edge cap in pixels |
-| `disabledRules` | `[]` | Rule ids to skip |
-| `whitelist` | built-in samples | Values never masked |
-| `logMasks` | `true` | Log markers without values |
+| `ocrMaxImagesPerTurn` | `3` | OCR cap per turn |
+| `redactImages` | `true` | Irreversible redaction |
+| `redactColor` | `#000000` | Fill color |
+| `compressImages` | `true` | Downscale |
+| `compressMaxDimension` | `2048` | Long-edge cap |
 
----
+## URL masking levels
 
-## 10. Moving to another machine
+| Value | Effect |
+|---|---|
+| `false` (default) | nothing |
+| `internal` | only `.internal` `.local` `.lan` `.corp` `.intra` `.private` `.svc` `.home` |
+| `all` | every domain, public included |
 
-Copy the bundle directory, then:
+`internal` is the practical choice: internal hosts are masked while `github.com` stays
+readable.
 
-1. `npm install` — installs `jsqr`. Skip it and QR detection is unavailable.
-2. `node ocr/selfcheck.mjs` — prints what this machine can do.
-3. If image analysis is wanted off Windows, install Pillow
-   (`pip install pillow`) and tesseract with the language pack you need.
+## Moving to another machine
 
-The self-check reports `OK`, `WARN`, or `MISS` per capability and exits
-non-zero only on a real failure, so it works in a script. `--json` gives the
-same rows as structured output.
+1. Copy the directory.
+2. `npm install` for `jsqr` (skip it and QR detection is lost, everything else works).
+3. `node ocr/selfcheck.mjs` reports what this machine can do.
+4. For image text off Windows, install Pillow (`pip install pillow`) and tesseract with
+   the language pack you need.
 
----
+The self-check prints `OK` / `WARN` / `MISS` per capability and exits non-zero only on a
+real failure, so it works in a script. `--json` gives structured output.
 
-## 11. Guarantees and limits
+## Guarantees
 
-- Substitution is **single-pass and forward-only**. Originals are never stored,
-  never restored, and never logged.
-- The session placeholder registry keeps a **SHA-256 digest** per value, never
-  the value. The same secret keeps the same placeholder across a session without
-  the plaintext being retained.
-- The plugin governs **requests this Host builds**. It cannot turn off logging at
-  a third-party relay gateway; that stays a gateway-side setting.
-- Rules are pattern-based. They catch the listed formats, not every possible
-  spelling; add a rule or a `disabledRules` entry for your corpus.
-- Address and medical detection is **deliberately narrow**: it fires on
-  administrative-division chains and clinical markers, accepting limited recall
-  rather than masking ordinary prose.
+- Only sensitive values are replaced; code structure, comments, and identifiers survive.
+- Replacement is in-memory and transient; plaintext is never restored or persisted, and
+  the log carries only a digest.
+- After masking, the request proceeds through routing, retry, and dispatch as usual.
 
----
+## What this cannot do
 
-## 12. License
+- **Gateway payload logging**: a gateway-side setting, outside this plugin's control.
+- **Erasing the original image on disk**: the attachment store is content-addressed and
+  immutable.
+- **Rewriting an already-rendered delta**: response masking applies when a block closes;
+  the durable log and later requests see masked text, but a delta already shown in the UI
+  is not revisited.
+- **Covering every spelling**: rules match the listed formats, not all possible ones.
 
-MIT, see [LICENSE](LICENSE).
+## License
+
+MIT

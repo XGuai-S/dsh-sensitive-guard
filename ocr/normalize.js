@@ -49,44 +49,66 @@ export function assessOcrLine(rawLine, options = {}) {
   return { reliable: true, reason: undefined, text: normalized };
 }
 
-/** OCR-specific patterns, applied to the normalized text of a recognized line. */
+/**
+ * OCR 专用规则 / OCR-specific patterns.
+ *
+ * 识别引擎会插入空格、拆断 ASCII 串，因此这些规则比主规则表更宽容。
+ * 只用于「判断某一行是否命中」和「对码内文本做替换」，不替代主规则表。
+ *
+ * The recognizer inserts spaces and splits ASCII runs, so these are more
+ * permissive than the main table. They decide whether a line is sensitive and
+ * mask QR payloads; they do not replace the main table.
+ */
 export const OCR_RULES = [
   {
     id: 'ocr-split-secret',
     risk: 'high',
+    kind: 'api密钥',
     to: '{{SECRET_TOKEN}}',
-    // A prefix whose token body was broken across a space boundary.
-    re: /(?<![\w-])(?:sk-|ghp_|gho_|github_pat_|glpat-|npm_|hf_|xox[baprs]-)[A-Za-z0-9_-]*(?:\s[A-Za-z0-9_-]+)?/g,
+    // 前缀后可能被空格拆断 / the body may be split by a space.
+    re: /(?<![\w-])(?:sk-proj-|sk-ant-|sk-|ghp_|gho_|github_pat_|glpat-|npm_|hf_|xox[baprs]-)[A-Za-z0-9_-]*(?:\s[A-Za-z0-9_-]+)?/g,
   },
   {
     id: 'ocr-cn-mobile',
     risk: 'high',
+    kind: '身份隐私',
     to: '{{PRIVACY_ID}}',
-    // Phone numbers printed with separators: 138 0013 8000 / 138-0013-8000.
+    // 带分隔符的手机号 / phone numbers printed with separators.
     re: /(?<!\d)1[3-9]\d(?:[ -]?\d{4}){2}(?!\d)/g,
   },
   {
     id: 'ocr-cn-id',
     risk: 'high',
+    kind: '身份隐私',
     to: '{{PRIVACY_ID}}',
     re: /(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)/g,
   },
   {
+    id: 'ocr-one-time-code',
+    risk: 'high',
+    kind: '验证码',
+    to: '{{ONE_TIME_CODE}}',
+    // 验证码：关键词 + 4–6 位数字 / keyword then 4–6 digits.
+    re: /((?:验证码|短信码|校验码|动态码|verify|verification|otp|totp|2fa|code)\s*[:：=是为]?\s*)(\d{4,6})(?!\d)/gi,
+    keepGroup: 1,
+  },
+  {
     id: 'ocr-label-value',
     risk: 'high',
+    kind: '密码',
     to: '{{CRED_CODE}}',
-    // Requires a real separator. A bare label word followed by a space would
-    // otherwise swallow the next token, and that token is often a secret the
-    // rules above already replaced with a placeholder.
-    re: /((?:密码|口令|验证码|密钥|账号|password|passwd|pwd|pin|otp)\s*[:：=]\s*)[^\s]{4,}/gi,
+    // 必须有真实分隔符；只写标签词会吞掉下一个词。
+    // Requires a real separator; a bare label would swallow the next token.
+    re: /((?:密码|口令|密钥|账号|password|passwd|pwd|pin)\s*[:：=]\s*)[^\s]{4,}/gi,
     keepGroup: 1,
   },
   {
     id: 'ocr-signed-url',
     risk: 'high',
+    kind: '系统凭证',
     to: '{{CRED_CODE}}',
+    // 二维码通常承载 URL，敏感部分在查询串里。
     // A QR usually carries a URL, and the sensitive part is the query string.
-    // `token=abc123` must not survive just because it arrived inside a link.
     re: /((?:[?&](?:token|ticket|code|sign|sig|key|auth|session|password)=))[^&\s#]{3,}/gi,
     keepGroup: 1,
   },
