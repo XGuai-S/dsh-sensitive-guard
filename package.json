@@ -1,6 +1,6 @@
 {
     "name":  "dsh-sensitive-guard",
-    "version":  "1.0.0",
+    "version":  "1.1.1",
     "description":  "Pre-gateway sensitive content guard for DeepSeek Harness. Intercepts the session/prompt HTTP body before it reaches the inbox, so plaintext never lands in inbox or session. Three-level classification cleans and continues instead of aborting; only bypass-attack instructions are refused. Dual-direction, chunked and recursive scanning, structured logs, image OCR and QR.",
     "type":  "module",
     "license":  "MIT",
@@ -23,9 +23,13 @@
                   "index.js",
                   "rules.js",
                   "masking.js",
-                  "response.js",
                   "prebody.js",
+                  "response.js",
                   "bypass.js",
+                  "session-state.js",
+                  "accumulator.js",
+                  "logger.js",
+                  "image-pipeline.js",
                   "ocr",
                   "scripts",
                   "cordis.patch.yml",
@@ -36,8 +40,8 @@
                   "README.md",
                   "README.zh.md",
                   "README.en.md",
-                  "CHANGELOG.md",
-                  "LICENSE"
+                  "LICENSE",
+                  "CHANGELOG.md"
               ],
     "keywords":  [
                      "dsh-plugin",
@@ -54,7 +58,7 @@
                     "node":  "\u003e=20"
                 },
     "scripts":  {
-                    "test":  "node test/regression.mjs \u0026\u0026 node test/prebody.test.mjs",
+                    "test":  "node test/regression.mjs \u0026\u0026 node test/prebody.test.mjs \u0026\u0026 node test/architecture.test.mjs",
                     "selfcheck":  "node ocr/selfcheck.mjs",
                     "scrub":  "node scripts/scrub-session.mjs"
                 },

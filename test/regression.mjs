@@ -91,7 +91,9 @@ section('BLOCK：高熵兜底');
 check('高熵判定', isHighEntropy('aB3$xY9!kL2@mN5#pQ8&rS1tU4vW7'), true);
 check('短串不高熵', isHighEntropy('abc123'), false);
 check('长英文单词不高熵', isHighEntropy('internationalization'), false);
-check('高熵被阻断', scan('token aB3xY9kL2mN5pQ8rS1tU4vW7').level, 'BLOCK');
+// 纯 base64 形态交给解码检测，不参与高熵兜底。
+check('base64 形态不高熵', isHighEntropy('aGVsbG8gd29ybGQgdGhpcyBpcyBmaW5l'), false);
+check('高熵被阻断', scan('token aB3xY9kL2mN5pQ8rS1tU4vW7!zX0').level, 'BLOCK');
 
 section('MASK：网络信息');
 check('公网 IP', scan('8.8.8.8').level, 'MASK');

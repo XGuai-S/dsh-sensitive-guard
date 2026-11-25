@@ -121,11 +121,22 @@ const KV_PREFIX = String.raw`((?:${KV_KEY})\s*["'` + '`' + String.raw`]?\s*(?:=>
 /** 取值终止符 / Value terminators. */
 const KV_VALUE = String.raw`([^\s"'` + '`' + String.raw`,;)}\]]{3,})`;
 
-/** 固定前缀密钥 / Fixed-prefix keys. */
+/**
+ * 固定前缀密钥 / Fixed-prefix keys.
+ *
+ * 前缀按长度降序排列，长的先匹配，避免 `sk-` 抢先吃掉 `sk-proj-` 的前半段。
+ * 前缀本身必须后接足够长的密钥体，否则 `AKIA` 这类短前缀会把整个值只换掉
+ * 开头四个字符，留下可读的剩余部分。
+ *
+ * Prefixes are ordered longest-first so `sk-` cannot claim the head of
+ * `sk-proj-`. Each prefix must be followed by a substantial body, otherwise a
+ * short prefix such as `AKIA` replaces four characters and leaves the rest
+ * readable.
+ */
 const KEY_PREFIX = [
-  'sk-proj-', 'sk-ant-', 'sk-', 'ghp_', 'gho_', 'github_pat_', 'glpat-',
-  'AKIA', 'ASIA', 'LTAI', 'AKID', 'AIza', 'hf_', 'xox[baprs]-',
-  'sk_live_', 'rk_test_', 'whsec_', 'npm_', 'ssh-rsa', 'ssh-ed25519',
+  'github_pat_', 'sk-proj-', 'sk-ant-', 'sk_live_', 'rk_test_', 'whsec_',
+  'glpat-', 'xox[baprs]-', 'ssh-ed25519', 'ssh-rsa',
+  'AKIA', 'ASIA', 'LTAI', 'AKID', 'AIza', 'ghp_', 'gho_', 'sk-', 'hf_', 'npm_',
 ].join('|');
 
 /** PEM 私钥块 / PEM private key blocks. */
@@ -166,7 +177,12 @@ const BASE_RULES = [
     level: LEVELS.block,
     kind: HIT_KINDS.secret,
     to: PLACEHOLDERS.secret,
-    re: new RegExp(String.raw`(?<![\w-])${KEY_PREFIX}[A-Za-z0-9_+=/-]{8,}`, 'g'),
+    // 前缀必须整体分组，否则 `(?<![\w-])` 只约束第一个备选，其余前缀会
+    // 从词中任意位置匹配，且密钥体只跟着最后一个备选。
+    //
+    // The prefix must be wrapped in a group: without it the lookbehind binds to
+    // the first alternative only, and the body class attaches to the last one.
+    re: new RegExp(String.raw`(?<![\w-])(?:${KEY_PREFIX})[A-Za-z0-9_+=/-]{8,}`, 'g'),
   },
   {
     id: 'jwt',
@@ -309,16 +325,6 @@ const BASE_RULES = [
     keepGroup: 2,
   },
 
-  // ========== 高熵兜底：BLOCK ==========
-  {
-    id: 'high-entropy',
-    level: LEVELS.block,
-    kind: HIT_KINDS.entropy,
-    to: PLACEHOLDERS.secret,
-    re: /(?<![\w+/=-])[A-Za-z0-9+/_-]{24,}(?![\w+/=-])/g,
-    validate: isHighEntropy,
-  },
-
   // ========== 会话凭证：MASK ==========
   {
     id: 'cookie-session',
@@ -378,7 +384,15 @@ const BASE_RULES = [
     level: LEVELS.mask,
     kind: HIT_KINDS.path,
     to: PLACEHOLDERS.path,
-    re: /(?:[A-Za-z]:[\\/][^\s"'<>|,;)\]}]+|\/storage\/[^\s"'<>|,;)\]}]*|\/sdcard\/[^\s"'<>|,;)\]}]*|\/data\/[^\s"'<>|,;)\]}]*|\/root\/[^\s"'<>|,;)\]}]*|\/home\/[^\s"'<>|,;)\]}]+|\/Users\/[^\s"'<>|,;)\]}]+)/g,
+    // Windows 盘符、Android 各挂载点、Linux 常见根目录。
+    // Windows drive letters, Android mount points, and Linux root directories.
+    //
+    // Linux 侧必须列出具体前缀而不是笼统的 `/[a-z]+/`，否则会把 URL 路径
+    // 或注释里的斜杠片段一起吃掉。
+    //
+    // The Linux side lists concrete prefixes rather than a generic `/[a-z]+/`;
+    // a wildcard would also consume URL paths and prose fragments.
+    re: /(?:[A-Za-z]:[\\/][^\s"'<>|,;)\]}]+|\/(?:storage|sdcard|data)\/[^\s"'<>|,;)\]}]*|\/(?:root|home|Users)\/[^\s"'<>|,;)\]}]+|\/(?:etc|var|usr|opt|srv|tmp|mnt|media)\/[^\s"'<>|,;)\]}]+)/g,
   },
 
   // ========== 设备标识：MASK ==========
@@ -554,11 +568,19 @@ export function isExcluded(value) {
 /**
  * 高熵判定 / High-entropy test.
  * 长度 ≥ 24，至少三类字符，去重 ≥ 12，香农熵 ≥ 3.0。
+ *
+ * base64 串必须排除：它的熵天然很高，但「看起来像 base64」不等于「是密钥」。
+ * 是否真的敏感由 base64 解码检测回答（`detectBase64` 开关）。
+ *
+ * Base64 runs are excluded: their entropy is naturally high, and looking like
+ * base64 does not make something a secret. Whether the payload is sensitive is
+ * answered by the decode check instead.
  */
 export function isHighEntropy(value) {
   if (typeof value !== 'string' || value.length < 24) return false;
   if (isExcluded(value)) return false;
   if (isWhitelistedValue(value)) return false;
+  if (isBase64Like(value)) return false;
   let classes = 0;
   if (/[a-z]/.test(value)) classes += 1;
   if (/[A-Z]/.test(value)) classes += 1;
@@ -567,6 +589,21 @@ export function isHighEntropy(value) {
   if (classes < 3) return false;
   if (new Set(value).size < 12) return false;
   return shannonEntropy(value) >= 3.0;
+}
+
+/**
+ * 是否像一个 base64 串 / Whether a value looks like base64.
+ *
+ * 判据：仅含 base64 字符集、长度是 4 的倍数、且带填充或足够长。
+ * 这类串交给解码检测，不参与高熵兜底。
+ *
+ * Only the base64 alphabet, a multiple-of-four length, and either padding or
+ * enough length. Such runs belong to the decode check, not the entropy fallback.
+ */
+export function isBase64Like(value) {
+  if (typeof value !== 'string' || value.length < 24) return false;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
+  return value.length % 4 === 0 || value.length >= 40;
 }
 
 /** 香农熵（每字符比特数）/ Shannon entropy in bits per character. */
@@ -632,12 +669,49 @@ function optionalRules(config) {
 }
 
 /**
+ * 高熵兜底规则 / The high-entropy fallback.
+ *
+ * 它**必须**排在最后：任何更具体的规则（路径、IP、设备号、指纹）都比它更
+ * 准确地描述命中，让它先跑会把路径前缀当成随机串吃掉。
+ *
+ * 这是重构中发现的真实缺陷：它原先位于基础规则表中段，抢在 `local-path`
+ * 与 `net-*` 之前匹配，导致 `/storage/emulated/0/DCIM/screenshot.png` 被
+ * 归类为「可疑长串」而不是「本地路径」。
+ *
+ * It **must** run last. Every specific rule describes a hit more precisely, and
+ * letting this one run first consumed path prefixes as random strings. That was
+ * a real defect found during the refactor: it sat mid-table and claimed
+ * `/storage/emulated/0/DCIM/screenshot.png` before `local-path` could.
+ *
+ * @returns {object}
+ */
+function highEntropyRule() {
+  return {
+    id: 'high-entropy',
+    level: LEVELS.block,
+    kind: HIT_KINDS.entropy,
+    to: PLACEHOLDERS.secret,
+    // 字符类覆盖 ASCII 可打印符号，否则一个 `!` 会切断匹配，只留下前半段。
+    // 边界排除字母数字与常见分隔符，避免吃掉 URL 与路径片段。
+    //
+    // The class covers printable ASCII so a single symbol does not truncate the
+    // match; the boundary excludes alphanumerics and common separators.
+    re: /(?<![\w+/=-])[!-~]{24,}(?![\w+/=-])/g,
+    validate: isHighEntropy,
+  };
+}
+
+/**
  * 组装规则表 / Assemble the rule table.
+ *
+ * 顺序即识别优先级 / order is the recognition priority:
+ *   具体规则（结构、证件、凭证、地址）→ 高熵兜底
  *
  * @param {object} config 归一化配置 / normalized config
  * @param {object[]} [extraRules] 额外规则（住址、病历、姓名+证件）/ extra rules
  */
 export function buildRules(config, extraRules = []) {
   const rules = [...extraRules, ...BASE_RULES, ...optionalRules(config)];
+  if (config.detectHighEntropy !== false) rules.push(highEntropyRule());
   return rules.filter((rule) => !config.disabledRules?.includes(rule.id));
 }

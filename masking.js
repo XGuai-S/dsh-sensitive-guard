@@ -251,7 +251,13 @@ export function scanDeep(text, rules, context, depth = 0) {
   };
 
   // 一层 base64：解码后若命中，整串替换。
+  //
   // 阈值取 24：更短的 base64 解码后没有足够内容承载一个凭据。
+  // 判定要求**解码结果自身命中具体规则**，而不是「解码成功就算可疑」：
+  // `aGVsbG8gd29ybGQ=` 这类普通文本载荷必须放行。
+  //
+  // A hit requires the decoded text to match a concrete rule; a successful
+  // decode is not itself suspicious, or ordinary text payloads would be masked.
   if (context.config?.detectBase64 === true) {
     merged = merged.replace(/[A-Za-z0-9+/]{24,}={0,2}/g, (run) => {
       let decoded;
@@ -260,9 +266,11 @@ export function scanDeep(text, rules, context, depth = 0) {
       } catch {
         return run;
       }
+      // 回编码校验：不是合法 base64 的串会在这里被排除。
+      // Round-trip check rejects anything that was not really base64.
+      if (Buffer.from(decoded, 'utf8').toString('base64').replace(/=+$/, '') !== run.replace(/=+$/, '')) return run;
       // 解码结果必须可打印，否则这不是文本载荷。
       if (!decoded || /[\u0000-\u0008\u000e-\u001f]/.test(decoded)) return run;
-      // 必须是可读文本，避免把二进制误当载荷。
       if (!/[\x20-\x7e\u4e00-\u9fff]{8,}/.test(decoded)) return run;
       const inner = scanDeep(decoded, rules, context, depth + 1);
       if (inner.level === LEVELS.pass) return run;
