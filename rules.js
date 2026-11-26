@@ -31,6 +31,18 @@
  * cannot tell whether `{{PRIVACY_ID_2}}` is a phone or a card, and which one gets
  * `_2` depends on rule order.
  */
+/**
+ * 数字串分隔符 / Separators allowed inside long numeric identifiers.
+ *
+ * 手机号、身份证、银行卡常被空格、连字符、点、下划线、斜杠、间隔号拆开书写
+ * （`1-3-8-0-0...`、`6222 0212 0201 2345 678`）。规则正则把这些符号当作
+ * 可选分隔符，去掉后按原形状判定，命中即替换整段（含分隔符）。
+ * 只覆盖这些明确的标点，不做全局 `\D` 移除，避免误伤 `1.2.3`、`12:30` 等。
+ */
+const NUM_SEP = '[ .\\-_/·]';
+/** 去掉数字串里的允许分隔符，供 validate 归一后判定。 */
+const stripNumSep = (s) => s.replace(/[ .\-_/·]/g, '');
+
 export const PLACEHOLDERS = Object.freeze({
   secret: '{{SECRET_TOKEN}}',
   /** 通用身份信息兜底 / generic identity fallback. */
@@ -362,10 +374,10 @@ const BASE_RULES = [
     //
     // Identity numbers are often grouped (`1101011990 0307 4513`). Strip the
     // spacing, test the same shape, and replace the whole spaced run.
-    re: /(?<![\dA-Za-z])\d(?:[ \t]?\d){16}[ \t]?[\dXx](?![\dA-Za-z])/g,
+    re: /(?<![\dA-Za-z])\d(?:[ .\-_/·\t]?\d){16}[ .\-_/·\t]?[\dXx](?![\dA-Za-z])/g,
     validate: (value) => {
-      if (!/[ \t]/.test(value)) return false; // 无分隔符交给 cn-id-card
-      const bare = value.replace(/[ \t]/g, '');
+      if (!/[ .\-_/·\t]/.test(value)) return false; // 无分隔符交给 cn-id-card
+      const bare = value.replace(/[ .\-_/·\t]/g, '');
       if (!/^[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/.test(bare)) return false;
       return !isPlaceholderNumber(bare);
     },
@@ -375,7 +387,7 @@ const BASE_RULES = [
     level: LEVELS.block,
     kind: HIT_KINDS.privacy,
     to: PLACEHOLDERS.bankCard,
-    re: /(?<!\d)(?:\d{4}[ -]?){3,4}\d{0,3}(?!\d)/g,
+    re: /(?<!\d)\d(?:[ .\-_/·]?\d){14,18}(?!\d)/g,
     validate: validateBankCard,
   },
   {
@@ -496,11 +508,11 @@ const BASE_RULES = [
     // Accept grouped spaces, hyphens, or dots and optional +86/0086; the country
     // code stays outside the replacement. A single leading `0` is tolerated too,
     // because address books and older forms write `0139…`.
-    re: new RegExp(String.raw`(?<![0-9０-９])(?:(?:\+?86|0086)[ -]?)?[（(]?[0０]?[1１][3-9３-９][0-9０-９][）)]?(?:[ .-]?[0-9０-９]{4}){2}(?![0-9０-９])`, 'g'),
+    re: new RegExp(String.raw`(?<![0-9０-９])(?:(?:\+?86|0086)[ .\-_/·]?)?[（(]?[0０]?[1１][ .\-_/·]?[3-9３-９][ .\-_/·]?[0-9０-９][）)]?(?:[ .\-_/·]?[0-9０-９]){8}(?![0-9０-９])`, 'g'),
     validate: (value) => {
       const normalized = value.normalize('NFKC');
       const local = normalized
-        .replace(/^(?:(?:\+?86|0086)[ -]?)?/, '')
+        .replace(/^(?:(?:\+?86|0086)[ .\-_/·]?)?/, '')
         .replace(/^0(?=1[3-9])/, '');
       const digits = local.replace(/\D/g, '');
       return digits.length === 11 && !isPlaceholderNumber(digits);

@@ -1,6 +1,6 @@
 {
   "name": "dsh-sensitive-guard",
-  "version": "1.7.8",
+  "version": "1.7.9",
   "description": "Pre-gateway sensitive content guard for DeepSeek Harness. Intercepts the session/prompt HTTP body before it reaches the inbox, so plaintext never lands in inbox or session. Three-level classification cleans and continues instead of aborting; only bypass-attack instructions are refused. Dual-direction, chunked and recursive scanning, structured logs, image OCR and QR.",
   "type": "module",
   "license": "MIT",
@@ -60,7 +60,7 @@
     "dsh": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.2 || >=0.2.2-rc.5 <0.2.3 || >=0.2.3 <0.4.0"
   },
   "scripts": {
-    "test": "node test/regression.mjs && node test/prebody.test.mjs && node test/architecture.test.mjs && node test/rules-coverage.test.mjs && node test/image.test.mjs",
+    "test": "node test/regression.mjs && node test/prebody.test.mjs && node test/architecture.test.mjs && node test/rules-coverage.test.mjs && node test/image.test.mjs && node test/separators.test.mjs",
     "selfcheck": "node ocr/selfcheck.mjs",
     "scrub": "node scripts/scrub-session.mjs"
   },
