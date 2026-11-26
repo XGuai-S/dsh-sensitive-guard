@@ -201,6 +201,24 @@ export function interceptPayload(endpoint, payload, rules, contextFor, log, opti
 
   if (!isPromptEndpoint(endpoint)) return { handled: false };
 
+  // 含图片的消息完全直通 / Pass image-bearing payloads through untouched.
+  // 与 pre-step 一致：任何对含 image block 的 payload 重写都会破坏 DSH 的
+  // 附件引用，导致 GUI 报「这个附件发不了」。图片消息原样放行。
+  // Any rewrite of an image-bearing payload breaks DSH's attachment handle.
+  const hasImage = (() => {
+    const walk = (v, depth) => {
+      if (depth > 8 || v === null || typeof v !== 'object') return false;
+      if (Array.isArray(v)) return v.some((x) => walk(x, depth + 1));
+      if (v.type === 'image') return true;
+      return Object.values(v).some((x) => walk(x, depth + 1));
+    };
+    return walk(payload, 0);
+  })();
+  if (hasImage) {
+    log('sensitive-guard 【图片直通】含 image block，原样放行以保证附件可发送');
+    return { handled: false };
+  }
+
   try {
     const sessionId = payload?.sessionId ?? payload?.session ?? payload?.args?.sessionId ?? 'default';
     const context = contextFor(sessionId);

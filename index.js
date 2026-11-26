@@ -321,6 +321,20 @@ export function apply(ctx, rawConfig) {
       if (!config.maskUserMessages) return decision;
       if (decision?.kind !== 'enter' || !Array.isArray(decision.messages)) return decision;
 
+      // 含图片的消息完全直通 / Pass image-bearing messages through untouched.
+      // 实测：只要插件处理含 image block 的消息，GUI 就报「这个附件发不了」；
+      // 关闭插件即可发送。任何对 decision/messages 的重写（哪怕只是 map 生成新
+      // 数组、或 OCR 命中后 totals.changed 触发 {...decision, messages} 重建）都会
+      // 破坏附件的宿主引用。图片消息一律跳过脱敏/OCR/涂改，行为等同插件关闭，
+      // 保证附件原样送达。纯文本消息不受影响。
+      // Any rewrite of an image-bearing decision breaks DSH's attachment handle.
+      // Pass such messages straight through; text-only masking stays intact.
+      if (decision.messages.some((message) => Array.isArray(message?.content)
+        && message.content.some((block) => block?.type === 'image'))) {
+        logger.info('[user_input] 含图片消息直通，跳过脱敏/OCR，附件原样发送');
+        return decision;
+      }
+
       // 绕过判定优先于脱敏：命中即拦截。
       if (config.detectBypass && config.blockBypass) {
         for (const message of decision.messages) {

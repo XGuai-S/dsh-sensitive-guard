@@ -86,6 +86,19 @@ check('无敏感 handled 为假', passOutcome.handled, false);
 const skipOutcome = interceptPayload('session/fork', { sessionId: 's1' }, RULES, contextFor, noop);
 check('非 prompt 端点跳过', skipOutcome.handled, false);
 
+section('图片消息直通（保证附件可发送）');
+const imagePrompt = {
+  sessionId: 's1',
+  args: {
+    content: [
+      { type: 'text', text: '密码 pass123 看这张图' },
+      { type: 'image', attachment: { attachmentId: 'a1', mediaType: 'image/png', name: 'a.png' } },
+    ],
+  },
+};
+const imageOutcome = interceptPayload('session/followup', imagePrompt, RULES, contextFor, noop);
+check('含图片 prompt 不改写', imageOutcome.handled, false);
+
 section('异常兜底');
 const brokenContext = () => { throw new Error('boom'); };
 const errOutcome = interceptPayload('session/prompt', { ...payload }, RULES, brokenContext, noop);
