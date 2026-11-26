@@ -3,26 +3,21 @@
       name: 'dsh-sensitive-guard'
       config:
         enabled: true
-        # 调试旁路：true 时跳过全部检测，仅用于调试
-        bypassSanitize: false
-        # 混合文本：true 时只清除敏感片段（当前默认已按清洗实现）
+        # 鐠嬪啳鐦弮浣界熅閿涙rue 閺冩儼鐑︽潻鍥у弿闁劍顥呭ù瀣剁礉娴犲懐鏁ゆ禍搴ょ殶鐠?        bypassSanitize: false
+        # 濞ｅ嘲鎮庨弬鍥ㄦ拱閿涙rue 閺冭泛褰у〒鍛存珟閺佸繑鍔呴悧鍥唽閿涘牆缍嬮崜宥夌帛鐠併倕鍑￠幐澶嬬濞叉鐤勯悳甯礆
         partialBlock: false
-        # HTTP 前置拦截：在明文进入 inbox 之前改写请求体。
-        # 这是唯一能阻止明文进 inbox 的位置，失败即放行。
-        interceptPromptBody: true
-        # 诊断：记录每个到达 connection/request 的请求，确认传输通道
-        diagnoseTransport: true
+        # HTTP 閸撳秶鐤嗛幏锔藉焻閿涙艾婀弰搴㈡瀮鏉╂稑鍙?inbox 娑斿澧犻弨鐟板晸鐠囬攱鐪版担鎾扁偓?        # 鏉╂瑦妲搁崬顖欑閼充粙妯嗗銏℃閺傚洩绻?inbox 閻ㄥ嫪缍呯純顕嗙礉婢惰精瑙﹂崡铏杹鐞涘被鈧?        interceptPromptBody: true
+        # 鐠囧﹥鏌囬敍姘愁唶瑜版洘鐦℃稉顏勫煂鏉?connection/request 閻ㄥ嫯顕Ч鍌︾礉绾喛顓绘导鐘虹翻闁岸浜?        diagnoseTransport: true
         blockBypass: true
 
-        # 双向扫描
+        # 閸欏苯鎮滈幍顐ｅ伎
         maskUserMessages: true
         maskToolResults: true
-        maskResponses: true
+        maskResponses: false
         maskSubagentReturns: true
         auditRequests: true
 
-        # 识别开关
-        detectHighEntropy: true
+        # 鐠囧棗鍩嗗鈧崗?        detectHighEntropy: true
         detectAddresses: true
         detectMedical: true
         detectQr: true
@@ -32,17 +27,15 @@
         maskDbCredentials: true
         maskPublicKeys: false
 
-        # URL 分级：false | internal | all
+        # URL 閸掑棛楠囬敍姝燼lse | internal | all
         maskUrls: false
 
-        # 日志与告警
-        logMasks: true
+        # 閺冦儱绻旀稉搴℃啞鐠€?        logMasks: true
         logFormat: json
         highRiskAlertAfter: 6
         perSessionStats: true
 
-        # 图片
-        maxImagesPerTurn: 3
+        # 閸ュ墽澧?        maxImagesPerTurn: 3
         ocr: true
         ocrMode: local
         imageBackend: auto
@@ -55,7 +48,5 @@
         compressImages: true
         compressMaxDimension: 2048
 
-        # 会话临时白名单（误判内容，当前会话不再脱敏）
-        sessionWhitelist: []
-        # 全局永久白名单
-        globalWhitelist: []
+        # 娴兼俺鐦芥稉瀛樻閻ц棄鎮曢崡鏇礄鐠囶垰鍨介崘鍛啇閿涘苯缍嬮崜宥勭窗鐠囨繀绗夐崘宥堝姎閺佸骏绱?        sessionWhitelist: []
+        # 閸忋劌鐪闀愮畽閻ц棄鎮曢崡?        globalWhitelist: []
