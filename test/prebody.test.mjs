@@ -1,6 +1,6 @@
 // RPC 前置拦截测试 / Pre-inbox RPC interception tests.
 import {
-  isPromptEndpoint, sanitizeArgs, interceptPayload,
+  isPromptEndpoint, sanitizeArgs, sanitizeWithAttachments, interceptPayload,
   buildFullRules, resolveConfig, createRegistry,
 } from '../index.js';
 
@@ -86,18 +86,35 @@ check('无敏感 handled 为假', passOutcome.handled, false);
 const skipOutcome = interceptPayload('session/fork', { sessionId: 's1' }, RULES, contextFor, noop);
 check('非 prompt 端点跳过', skipOutcome.handled, false);
 
-section('图片消息直通（保证附件可发送）');
+section('含图消息：无明文时不改写');
 const imagePrompt = {
   sessionId: 's1',
   args: {
     content: [
-      { type: 'text', text: '密码 pass123 看这张图' },
+      { type: 'text', text: '看这张图' },
       { type: 'image', attachment: { attachmentId: 'a1', mediaType: 'image/png', name: 'a.png' } },
     ],
   },
 };
 const imageOutcome = interceptPayload('session/followup', imagePrompt, RULES, contextFor, noop);
-check('含图片 prompt 不改写', imageOutcome.handled, false);
+check('无明文时 handled 为假', imageOutcome.handled, false);
+
+section('图文混合：文字脱敏，附件原样');
+const mixedPayload = {
+  args: {
+    content: [
+      { type: 'text', text: '手机号13800138000 银行卡6222021202012345678' },
+      { type: 'image', attachment: { attachmentId: 'a1', mediaType: 'image/png', name: 'a.png', width: 1920, height: 1080, bytes: 252465 } },
+    ],
+  },
+};
+const mixedImageRef = mixedPayload.args.content[1];
+const mixed = sanitizeWithAttachments(mixedPayload, RULES, contextFor());
+check('图文混合 changed', mixed.changed, true);
+check('文字手机号已脱敏', mixed.value.args.content[0].text.includes('{{PHONE_NO}}'), true);
+check('文字银行卡已脱敏', mixed.value.args.content[0].text.includes('{{BANK_CARD}}'), true);
+check('图片对象身份保持', mixed.value.args.content[1] === mixedImageRef, true);
+check('图片字段完整', Object.keys(mixed.value.args.content[1].attachment).sort(), ['attachmentId', 'bytes', 'height', 'mediaType', 'name', 'width']);
 
 section('异常兜底');
 const brokenContext = () => { throw new Error('boom'); };

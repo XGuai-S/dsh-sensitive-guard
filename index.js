@@ -35,7 +35,7 @@ import { privacyRules, NAME_ID_PAIR_RULE } from './ocr/detect.js';
 import { maskResponseStream, maskBase64Payloads } from './response.js';
 import {
   interceptPayload, interceptPromptBody, replaceRequestBody,
-  isPromptEnvelope, isPromptEndpoint, sanitizeArgs,
+  isPromptEnvelope, isPromptEndpoint, sanitizeArgs, sanitizeWithAttachments,
 } from './prebody.js';
 import { detectBypassAttempt, userTextOf, BYPASS_KIND } from './bypass.js';
 import {
@@ -62,7 +62,7 @@ export {
   runSanitize, auditRequest, structuredLog, maskPreview, inputHash, chunkText,
 };
 export { maskResponseStream, maskBase64Payloads, privacyRules, NAME_ID_PAIR_RULE };
-export { interceptPayload, interceptPromptBody, replaceRequestBody, isPromptEnvelope, isPromptEndpoint, sanitizeArgs };
+export { interceptPayload, interceptPromptBody, replaceRequestBody, isPromptEnvelope, isPromptEndpoint, sanitizeArgs, sanitizeWithAttachments };
 export { detectBypassAttempt, userTextOf, BYPASS_KIND };
 export { SessionState, ResultAccumulator, GuardLogger, shouldAlertStreak };
 export { analyzeImages, applyReplacements };

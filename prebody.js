@@ -181,6 +181,65 @@ function isAttachmentContainer(value, key) {
 }
 
 /**
+ * 含附件消息的脱敏：重建对象树，但 image 块与 attachment 复用原对象引用。
+ * 这样既能在深冻结 payload 上完成文字脱敏，又不破坏 DSH 的附件身份。
+ * Mask with attachments: rebuild the tree but reuse image-block references.
+ */
+export function sanitizeWithAttachments(value, rules, context, depth = 0) {
+  const totals = { level: LEVELS.pass, counts: {}, kinds: new Set(), hits: [], changed: false };
+  if (depth > 8 || value === null || typeof value !== 'object') {
+    return { value, ...totals };
+  }
+
+  // 附件容器 / image 块：整体复用原引用，绝不重建。
+  if (isAttachmentContainer(value, '') || value.type === 'image') {
+    return { value, ...totals };
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((item) => {
+      const r = sanitizeWithAttachments(item, rules, context, depth + 1);
+      if (r.value !== item) changed = true;
+      absorbInto(totals, r);
+      return r.value;
+    });
+    return { value: changed ? next : value, ...totals };
+  }
+
+  let changed = false;
+  const next = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (IDENTIFIER_KEYS.has(key)) { next[key] = child; continue; }
+    if (key === 'text' && typeof child === 'string' && value.type === 'text') {
+      const result = runSanitize(child, rules, context);
+      if (result.level !== LEVELS.pass && result.content !== child) {
+        next[key] = result.content;
+        changed = true;
+        absorbInto(totals, result);
+      } else {
+        next[key] = child;
+      }
+      continue;
+    }
+    const r = sanitizeWithAttachments(child, rules, context, depth + 1);
+    if (r.value !== child) changed = true;
+    absorbInto(totals, r);
+    next[key] = r.value;
+  }
+  return { value: changed ? next : value, ...totals, changed };
+}
+
+/** 把子结果合并进 totals / merge a child result into totals. */
+function absorbInto(totals, r) {
+  for (const [p, c] of Object.entries(r.counts ?? {})) totals.counts[p] = (totals.counts[p] ?? 0) + c;
+  for (const k of r.kinds ?? []) totals.kinds.add(k);
+  if (r.hits) totals.hits.push(...r.hits);
+  if (r.level === LEVELS.block) totals.level = LEVELS.block;
+  else if (r.level === LEVELS.mask && totals.level === LEVELS.pass) totals.level = LEVELS.mask;
+}
+
+/**
  * 拦截一个已解析的 RPC payload / Intercept one parsed RPC payload.
  *
  * @param {string} endpoint RPC endpoint，如 `session/prompt`
@@ -201,27 +260,31 @@ export function interceptPayload(endpoint, payload, rules, contextFor, log, opti
 
   if (!isPromptEndpoint(endpoint)) return { handled: false };
 
-  // 含图片的消息完全直通 / Pass image-bearing payloads through untouched.
-  // 与 pre-step 一致：任何对含 image block 的 payload 重写都会破坏 DSH 的
-  // 附件引用，导致 GUI 报「这个附件发不了」。图片消息原样放行。
-  // Any rewrite of an image-bearing payload breaks DSH's attachment handle.
-  const hasImage = (() => {
+  // 含附件容器？用原地脱敏（只改 text 字段，保持对象身份，附件不受影响）。
+  // 纯文本消息走常规 sanitizeArgs（可重建，无附件引用风险）。
+  const hasAttachment = (() => {
     const walk = (v, depth) => {
       if (depth > 8 || v === null || typeof v !== 'object') return false;
       if (Array.isArray(v)) return v.some((x) => walk(x, depth + 1));
-      if (v.type === 'image') return true;
-      return Object.values(v).some((x) => walk(x, depth + 1));
+      if (isAttachmentContainer(v, '') || v.type === 'image') return true;
+      return Object.entries(v).some(([k, x]) => (k === 'attachment' || k === 'attachments') || walk(x, depth + 1));
     };
     return walk(payload, 0);
   })();
-  if (hasImage) {
-    log('sensitive-guard 【图片直通】含 image block，原样放行以保证附件可发送');
-    return { handled: false };
-  }
 
   try {
     const sessionId = payload?.sessionId ?? payload?.session ?? payload?.args?.sessionId ?? 'default';
     const context = contextFor(sessionId);
+
+    if (hasAttachment) {
+      // 重建对象树但 image 块复用原引用：文字脱敏生效，附件身份不变。
+      const result = sanitizeWithAttachments(payload, rules, context);
+      if (!result.changed) return { handled: false };
+      log(`sensitive-guard ${structuredLog(result, 'rpc_pre_inbox_image', inputHash(JSON.stringify(payload)))}`);
+      log(`sensitive-guard 【✅图文混合：文字已脱敏，附件原样保留】level=${result.level}`);
+      return { handled: true, payload: result.value, level: result.level, counts: result.counts, kinds: result.kinds };
+    }
+
     const result = sanitizeArgs(payload, rules, context);
     if (!result.changed) {
       if (options.diagnose === true) {
