@@ -1190,6 +1190,9 @@ export function isHighEntropy(value) {
   // 含空格的是自然语言/代码行，不是密钥。密钥是无空格的紧凑串；high-entropy
   // 的字符类含空格，会把 `function foo() { return 1; }` 整行吞进去误判。
   if (/\s/.test(value)) return false;
+  // ISO 8601 时间戳 `2026-11-26T12:34:56.789Z`：24 字符、无空格、熵够，
+  // 但它是日志里最常见的时间字段，不是密钥。
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?$/.test(value)) return false;
   // 代码标识符形态：纯字母数字（可含 _ $），且 camelCase 或 snake_case，
   // 是函数名/类名/字段名，不是密钥。软件项目里长标识符远比长随机密钥常见，
   // 误伤代价更高；常见密钥格式另有 key-prefix/jwt 等前置规则覆盖。
