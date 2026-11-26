@@ -16,6 +16,22 @@
 
 ## [Unreleased]
 
+## [1.7.12] - 2026-11-26
+
+软件开发项目常见内容不再被误判为密钥。
+
+### 修正
+
+- **high-entropy 误伤代码标识符**。字符类含空格与括号，会把 `function foo() {...}`
+  整段吞进去；长函数名/类名/camelCase 方法/JSON 字段名因高熵被替换成 `{{SECRET_TOKEN}}`。
+  修法：跳过含空格的串；对纯标识符（去引号/括号/点/分号/冒号后）用「≥3 连续小写字母
+  段」判据识别有语义的代码标识符并放行。真随机密钥（`aB3xY9...` 大小写数字交替、
+  无连续小写段）仍被高熵规则拦住。
+- **env-credential 误伤环境变量**。`NODE_ENV=production` 被当凭据。补 ENV/MODE/
+  DEBUG/LOCALE/LANG/TZ/HOME/PATH/USER/HOST/CI 等非机密键名到排除表。
+- 新增 `test/dev-content.test.mjs`（20 项）：函数名/类名/方法/JSON字段/环境变量/
+  git hash/sha256/UUID/版本/base64/SQL/注释不误判，真密钥仍被拦。
+
 ## [1.7.11] - 2026-11-26
 
 修复长 Windows 路径被误判为高熵密钥。

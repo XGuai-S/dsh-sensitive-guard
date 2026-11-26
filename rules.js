@@ -691,7 +691,7 @@ const BASE_RULES = [
       if (!match) return true;
       const key = match[1];
       const value = match[2];
-      if (/(?:^|_)(?:SHA\d*|MD5|HASH|CHECKSUM|DIGEST|SUM|PORT|TIMEOUT|COUNT|SIZE|LEN|LENGTH|LIMIT|MAX|MIN|DEFAULT|LEVEL|THREADS|WORKERS|INTERVAL|RETRY|DAYS|MS|SECONDS|VERSION|BUILD|REV|REVISION|ID|NO|NUM|NUMBER|CODE|RATE|PERCENT|RATIO)$/.test(key)) return false;
+      if (/(?:^|_)(?:SHA\d*|MD5|HASH|CHECKSUM|DIGEST|SUM|PORT|TIMEOUT|COUNT|SIZE|LEN|LENGTH|LIMIT|MAX|MIN|DEFAULT|LEVEL|THREADS|WORKERS|INTERVAL|RETRY|DAYS|MS|SECONDS|VERSION|BUILD|REV|REVISION|ID|NO|NUM|NUMBER|CODE|RATE|PERCENT|RATIO|ENV|MODE|NODE_ENV|DEBUG|LOCALE|LANG|TZ|HOME|PWD|PATH|SHELL|TERM|USER|HOST|PLATFORM|ARCH|OS|CI|PROD|DEV|STAGE)$/.test(key)) return false;
       if (isExcluded(value)) return false;
       return true;
     },
@@ -1187,6 +1187,19 @@ export function isExcluded(value) {
  */
 export function isHighEntropy(value) {
   if (typeof value !== 'string' || value.length < 24) return false;
+  // 含空格的是自然语言/代码行，不是密钥。密钥是无空格的紧凑串；high-entropy
+  // 的字符类含空格，会把 `function foo() { return 1; }` 整行吞进去误判。
+  if (/\s/.test(value)) return false;
+  // 代码标识符形态：纯字母数字（可含 _ $），且 camelCase 或 snake_case，
+  // 是函数名/类名/字段名，不是密钥。软件项目里长标识符远比长随机密钥常见，
+  // 误伤代价更高；常见密钥格式另有 key-prefix/jwt 等前置规则覆盖。
+  // `myFunction12345678901234567890`、`userAuthenticationTokenExpirationTime`
+  // 这类有语义的标识符必须放行。
+  // 代码标识符形态：可能带尾部 `()`、成员访问 `.`、或引号包裹（JSON 字段）。
+  // 去掉这些外壳后若是 camelCase/snake_case 标识符，就是函数名/类名/字段名。
+  const ident = value.replace(/["'`.();:]/g, '');
+  if (/^[A-Za-z0-9_$]+$/.test(ident)
+    && (/[a-z]{3,}/.test(ident) || /_[a-z]/.test(ident) || /_[A-Z]/.test(ident))) return false;
   if (isExcluded(value)) return false;
   if (isWhitelistedValue(value)) return false;
   if (isBase64Like(value)) return false;
@@ -1344,7 +1357,10 @@ function highEntropyRule() {
     // The class covers printable ASCII but excludes `=` (0x3D); otherwise
     // `transaction_id=txn_...` is consumed whole as one high-entropy run. Two
     // ranges `!-<` and `>-~` skip exactly `=`.
-    re: /(?<![\w+/=-])[!-<>-~]{24,}(?![\w+/=-])/g,
+    // 标识符上下文排除：函数名 `someLongFunc(`、方法调用 `.someMethod(`、
+    // JSON 字段 `"longFieldName":` 后面紧跟 `(` 或 `":`，是代码标识符不是密钥。
+    // 负向先行断言让 high-entropy 跳过这些串，避免长函数名/字段名被误判。
+    re: /(?<![\w+/=-])[!-<>-~]{24,}(?![\w+/=-])(?!\s*\()/g,
     validate: isHighEntropy,
   };
 }
