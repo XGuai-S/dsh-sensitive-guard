@@ -98,6 +98,11 @@ export function maskBase64Payloads(text, rules, context) {
     } catch {
       return run;
     }
+    // 回编码校验：不是合法 base64 的串（例如恰好长度够的普通标识符）在这里
+    // 被排除，与 `scanDeep` 的判定保持一致。
+    // Round-trip check, matching `scanDeep`: a run that is not really base64 is
+    // skipped instead of being decoded into mojibake and misjudged.
+    if (Buffer.from(decoded, 'utf8').toString('base64').replace(/=+$/, '') !== run.replace(/=+$/, '')) return run;
     if (!decoded || /[\u0000-\u0008\u000e-\u001f]/.test(decoded)) return run;
     if (!/[\x20-\x7e\u4e00-\u9fff]{8,}/.test(decoded)) return run;
     const inner = scanText(decoded, rules, context);

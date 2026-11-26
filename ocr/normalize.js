@@ -63,6 +63,7 @@ export const OCR_RULES = [
   {
     id: 'ocr-split-secret',
     risk: 'high',
+    level: 'BLOCK',
     kind: 'api密钥',
     to: '{{SECRET_TOKEN}}',
     // 前缀后可能被空格拆断 / the body may be split by a space.
@@ -71,21 +72,24 @@ export const OCR_RULES = [
   {
     id: 'ocr-cn-mobile',
     risk: 'high',
-    kind: '身份隐私',
-    to: '{{PRIVACY_ID}}',
+    level: 'BLOCK',
+    kind: '联系方式',
+    to: '{{PHONE_NO}}',
     // 带分隔符的手机号 / phone numbers printed with separators.
     re: /(?<!\d)1[3-9]\d(?:[ -]?\d{4}){2}(?!\d)/g,
   },
   {
     id: 'ocr-cn-id',
     risk: 'high',
+    level: 'BLOCK',
     kind: '身份隐私',
-    to: '{{PRIVACY_ID}}',
+    to: '{{ID_CARD}}',
     re: /(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)/g,
   },
   {
     id: 'ocr-one-time-code',
     risk: 'high',
+    level: 'BLOCK',
     kind: '验证码',
     to: '{{ONE_TIME_CODE}}',
     // 验证码：关键词 + 4–6 位数字 / keyword then 4–6 digits.
@@ -95,6 +99,7 @@ export const OCR_RULES = [
   {
     id: 'ocr-label-value',
     risk: 'high',
+    level: 'BLOCK',
     kind: '密码',
     to: '{{CRED_CODE}}',
     // 必须有真实分隔符；只写标签词会吞掉下一个词。
@@ -105,6 +110,7 @@ export const OCR_RULES = [
   {
     id: 'ocr-signed-url',
     risk: 'high',
+    level: 'BLOCK',
     kind: '系统凭证',
     to: '{{CRED_CODE}}',
     // 二维码通常承载 URL，敏感部分在查询串里。
@@ -115,6 +121,8 @@ export const OCR_RULES = [
   {
     id: 'ocr-url',
     risk: 'normal',
+    level: 'MASK',
+    kind: '网络地址',
     to: '{{PRIVATE_URL}}',
     re: /\bhttps?:\/\/[^\s"'<>]+/gi,
   },

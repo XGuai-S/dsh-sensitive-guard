@@ -24,16 +24,47 @@
 import { createHash } from 'node:crypto';
 import {
   buildRules, isExcluded, luhn, isWhitelistedValue, isHighEntropy,
-  LEVELS, HIT_KINDS, CHUNK_SIZE, MAX_RECURSE_DEPTH, MAX_SCAN_CHARS,
+  DEFAULT_WHITELIST, LEVELS, HIT_KINDS, CHUNK_SIZE, MAX_RECURSE_DEPTH, MAX_SCAN_CHARS,
 } from './rules.js';
 
-const MAX_REGISTRY_ENTRIES = 512;
+/**
+ * 注册表上限 / Registry bounds.
+ *
+ * `MAX_REGISTRY_ENTRIES` 是**全部类别**的条目总数上限。早先的实现一旦写满就直接
+ * 返回类别基础占位符（`{{PRIVACY_ID}}`），于是两个**不同的真实值**拿到同一个
+ * 占位符——会话开头的手机号和写满之后的另一个手机号在日志里无法区分。实测
+ * 复现：灌入 512 个不同号码后，第 513 个与第 1 个输出完全相同。
+ *
+ * 现在写满后改用**摘要后缀**：由取值自身的 SHA-256 派生前 4 位十六进制，
+ * 不占用额外内存，同一个值恒定得到同一个后缀，不同值几乎不可能碰撞。
+ *
+ * `MAX_NUMBERED_PER_CATEGORY` 限制可读序号的上界：序号涨到 `_237` 这类三位数
+ * 既不美观也逼近碰撞区间，超过阈值后同样改用摘要后缀。
+ *
+ * The cap covers all categories together. The old code returned the bare category
+ * placeholder once full, so two *distinct* real values shared one placeholder —
+ * verified: the 513th distinct number rendered identically to the first. Overflow
+ * now derives a short suffix from the value's own digest: no extra memory, stable
+ * per value, collision-resistant across values. The numbered range is capped too,
+ * so placeholders never climb to `_237`.
+ */
+const MAX_REGISTRY_ENTRIES = 4096;
+const MAX_NUMBERED_PER_CATEGORY = 64;
+
+/** 摘要后缀占位符 / Digest-suffixed placeholder. */
+function digestPlaceholder(category, digest) {
+  return category.replace('}}', `~${digest.slice(0, 4)}}}`);
+}
 
 /**
  * 会话级占位符注册表 / Per-session placeholder registry.
  *
- * 同一个值在同一会话内恒定得到同一个占位符，保证上下文不错乱。
+ * 同一个值在同一会话内恒定得到同一个占位符，保证上下文不错乱；
+ * 不同的值必须得到**不同**的占位符，否则脱敏后两段内容会被读成同一件事。
  * 注册表只存 SHA-256 摘要，不存明文。
+ *
+ * The same value keeps one placeholder inside a session, and different values
+ * must not share one. The registry stores digests only, never plaintext.
  */
 export function createRegistry() {
   const entries = new Map();
@@ -44,10 +75,19 @@ export function createRegistry() {
       const key = `${category}:${digest}`;
       const known = entries.get(key);
       if (known !== undefined) return known;
-      if (entries.size >= MAX_REGISTRY_ENTRIES) return category;
-      const count = (counters.get(category) ?? 0) + 1;
-      counters.set(category, count);
-      const placeholder = count === 1 ? category : category.replace('}}', `_${count}}}`);
+
+      const count = counters.get(category) ?? 0;
+
+      // 序号用尽或总条目写满：改用摘要后缀，保证不碰撞且不增内存。
+      // Numbered range exhausted, or the table is full: switch to the digest
+      // suffix, which cannot collide and costs no memory.
+      if (count >= MAX_NUMBERED_PER_CATEGORY || entries.size >= MAX_REGISTRY_ENTRIES) {
+        return digestPlaceholder(category, digest);
+      }
+
+      const next = count + 1;
+      counters.set(category, next);
+      const placeholder = next === 1 ? category : category.replace('}}', `_${next}}}`);
       entries.set(key, placeholder);
       return placeholder;
     },
@@ -133,12 +173,13 @@ export function scanText(text, rules, context) {
   }
 
   // 白名单优先：整段命中即放行，不做任何替换。
-  if (isWhitelistedValue(text)) return { ...empty, whitelisted: true };
+  if (isWhitelistedValue(text, context.config?.whitelist)) return { ...empty, whitelisted: true };
 
   // 短文本直接扫。
   if (text.length <= CHUNK_SIZE) return scanChunk(text, rules, context);
 
-  // 长文本：先在完整文本上检测，避免分片切断敏感值。
+  // 长文本先在完整文本上检测，再逐片替换：保留跨边界敏感值检测能力。
+  // The full-input probe preserves detection of matches crossing chunk edges.
   const probe = scanChunk(text, rules, context);
   if (probe.level === LEVELS.pass) return probe;
 
@@ -173,8 +214,10 @@ function scanChunk(text, rules, context) {
   let level = LEVELS.pass;
   let changed = false;
 
+  const disabled = context.disabledRules ?? context.config?.disabledRulesSet;
+  const whitelist = context.config?.whitelist;
   for (const rule of rules) {
-    if (context.config?.disabledRules?.includes(rule.id)) continue;
+    if (disabled ? disabled.has(rule.id) : context.config?.disabledRules?.includes(rule.id)) continue;
     next = next.replace(rule.re, (...args) => {
       const whole = args[0];
       if (typeof whole !== 'string') return whole;
@@ -185,14 +228,30 @@ function scanChunk(text, rules, context) {
       if (rule.validate && !rule.validate(whole)) return whole;
 
       // 白名单判定对象是「被替换的值」，不是整段匹配。
-      const value = rule.keepGroup !== undefined
-        ? String(args[rule.keepGroup + 1] ?? args[rule.keepGroup] ?? whole)
-        : whole;
+      //
+      // 取值位置取决于规则分组数：`keepGroup` 是前缀组，取值在它的下一组。
+      // 用 `args.length - 2` 判断实际组数，只有存在第二组时才能取 next group，
+      // 否则会拿到 undefined 并回退成前缀本身——`apikey=test-key` 里前缀是
+      // `apikey=`，白名单因此永远匹配不到 `test-key`。
+      //
+      // The value sits one group after `keepGroup`. The number of real groups is
+      // `args.length - 2`; only take the next group when it exists. Falling back
+      // to the prefix group made the whitelist compare against `apikey=` and
+      // never against `test-key`.
+      const groupCount = Math.max(0, args.length - 2);
+      let value;
+      if (rule.keepGroup !== undefined) {
+        value = rule.keepGroup + 1 < groupCount
+          ? String(args[rule.keepGroup + 1] ?? whole)
+          : whole;
+      } else {
+        value = whole;
+      }
       const valueBody = rule.keepGroup !== undefined
         ? value.replace(/^[\s\S]*?[:=：]\s*["'`]?/, '')
         : value;
 
-      if (isWhitelistedValue(value) || isWhitelistedValue(valueBody)) return whole;
+      if (isWhitelistedValue(value, whitelist) || isWhitelistedValue(valueBody, whitelist)) return whole;
       if (context.sessionWhitelist?.has(valueBody) || context.sessionWhitelist?.has(whole)) return whole;
       if (rule.id === 'high-entropy' && isExcluded(whole)) return whole;
 

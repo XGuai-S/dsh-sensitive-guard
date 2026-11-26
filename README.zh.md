@@ -35,16 +35,33 @@ config:
 
 | 命中内容 | 占位符 |
 |---|---|
-| 明文密钥、私钥、Bearer、JWT、高熵可疑长串 | `{{SECRET_TOKEN}}` |
-| 身份证、手机、银行卡、护照、住址、病历、姓名+证件 | `{{PRIVACY_ID}}` |
+| 明文密钥、私钥、Bearer、JWT、高权限密码、高熵可疑长串 | `{{SECRET_TOKEN}}` |
+| 身份证（含分组书写） | `{{ID_CARD}}` |
+| 手机号（含空格/连字符分组） | `{{PHONE_NO}}` |
+| 银行卡号、CVV/CVC | `{{BANK_CARD}}` |
+| 护照号 | `{{PASSPORT_NO}}` |
+| 社保卡、医保卡 | `{{SOCIAL_CARD}}` |
+| 门诊号、住院号、诊断、病理 | `{{MEDICAL_INFO}}` |
+| 姓名 + 身份证号的组合 | `{{NAME_AND_ID}}` |
+| 住址 | `{{HOME_ADDR}}` |
 | 账号密码、数据库密码、wifi 密码、Cookie、sessionId、临时登录链接 | `{{CRED_CODE}}` |
 | 验证码（关键词 + 4–6 位数字） | `{{ONE_TIME_CODE}}` |
+| 微信、QQ、社交账号 | `{{SOCIAL_ID}}` |
+| 订单号、流水号 | `{{TRADE_NO}}` |
+| 证书序列号、DN、密钥指纹 | `{{CERT_INFO}}` / `{{KEY_FINGERPRINT}}` |
 | 本地绝对路径 | `{{LOCAL_PATH}}` |
 | IMEI、Android ID、SN | `{{DEVICE_ID}}` |
 | 邮箱 | `{{EMAIL_ADDR}}` |
-| 内网 / 公网 IP | `{{NET_IP}}` |
+| 车牌号 | `{{PLATE_NO}}` |
+| 内网 IP | `{{LAN_IP}}` |
+| 公网 IP | `{{NET_IP}}` |
 | 私有域名、内网地址 | `{{PRIVATE_URL}}` |
 | 数据库连接账号段 | `{{DB_CRED}}` |
+| 账户余额、结余、授信额度、带币种的金额 | `{{BALANCE_AMOUNT}}` |
+
+**一种语义一个占位符**：手机号与身份证不再共用同一个占位符家族，日志里一眼能分清。
+同一会话内同值恒定同一占位符；不同值必定不同——类别内第 2–64 个用 `_2`…`_64` 序号，
+更多时用取值摘要后缀（`{{PHONE_NO~53e3}}`），不会塌缩成同一个。
 
 ## 识别细则
 
@@ -74,6 +91,8 @@ storePassword=abcdef123456  →  storePassword={{CRED_CODE}}
 - 至少包含三类字符（小写、大写、数字、符号）
 - 去重后字符数 ≥ 12
 - 香农熵 ≥ 3.0 比特/字符
+- 不是 URL（含 `://`）、不是纯路径、不是堆栈帧、不是正则字面量
+- 不含 `=`（`key=value` 交给键值对规则，避免整段吞掉键名）
 
 命中后标记 `【⚠️高熵可疑密钥】` 并脱敏。
 
@@ -82,8 +101,15 @@ storePassword=abcdef123456  →  storePassword={{CRED_CODE}}
 以下内容**不**判定为凭证：
 
 - 端口号（1–65535）
-- 版本号（`1.2.3`、`v2.0.0-beta.1`）
-- MD5 / SHA-1 / SHA-256 / SHA-512 哈希串
+- 版本号（`1.2.3`、`v2.0.0-beta.1`、`v2.14.0-rc.1+build.20261126`）
+- MD5 / SHA-1 / SHA-256 / SHA-512 哈希串，以及 `sha256:<hex>` 摘要
+- UUID、颜色值、寄存器地址、git commit hash、数学算式
+
+## 规则规模
+
+主规则 **47 条**（BLOCK 34 + MASK 13）+ OCR 规则 **7 条** = **54 条**，占位符 **26 类**。
+完整清单见 [docs/RULES-INVENTORY.md](docs/RULES-INVENTORY.md)
+（逐条判定说明见 [docs/RULES.md](docs/RULES.md)）。
 
 ## 白名单
 

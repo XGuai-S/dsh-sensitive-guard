@@ -23,6 +23,9 @@ const regB = state.registryFor('session-b');
 check('不同会话不同注册表', regA !== regB, true);
 check('同会话复用注册表', state.registryFor('session-a'), regA);
 check('无会话落到 default', state.registryFor(undefined), state.registryFor('default'));
+const scanContextA = state.contextFor('session-a', []);
+const scanContextB = state.contextFor('session-b', []);
+check('不同会话共享禁用规则集合实例', scanContextA.disabledRules === scanContextB.disabledRules, true);
 check('空字符串落到 default', state.registryFor(''), state.registryFor('default'));
 
 section('SessionState：占位符稳定性跨调用');

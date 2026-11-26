@@ -180,7 +180,8 @@ export function apply(ctx, rawConfig) {
   }
 
   const rules = buildFullRules(config);
-  const ocrRules = OCR_RULES.filter((rule) => !config.disabledRules.includes(rule.id));
+  config.disabledRulesSet = new Set(config.disabledRules);
+  const ocrRules = OCR_RULES.filter((rule) => !config.disabledRulesSet.has(rule.id));
   const state = new SessionState(config);
   const logger = new GuardLogger(config, ctx.logger);
   const contextFor = (sessionId) => state.contextFor(sessionId, rules);

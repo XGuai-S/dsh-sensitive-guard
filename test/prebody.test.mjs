@@ -38,7 +38,7 @@ const payload = {
   ],
 };
 const result = sanitizeArgs(payload, RULES, contextFor());
-check('内容被替换', result.value.content[0].text.includes('{{PRIVACY_ID}}'), true);
+check('内容被替换', result.value.content[0].text.includes('{{PHONE_NO}}'), true);
 check('sessionId 保留', result.value.sessionId, 'session-abc');
 check('requestId 保留', result.value.requestId, 'req-1');
 check('mode 保留', result.value.mode, 'queue');
@@ -62,7 +62,7 @@ check('内网 IP 替换', ipResult.value.content[0].text.includes('{{LAN_IP}}'),
 section('interceptPayload 返回值');
 const outcome = interceptPayload('session/prompt', { ...payload }, RULES, contextFor, noop);
 check('handled 为真', outcome.handled, true);
-check('返回新 payload', outcome.payload.content[0].text.includes('{{PRIVACY_ID}}'), true);
+check('返回新 payload', outcome.payload.content[0].text.includes('{{PHONE_NO}}'), true);
 
 const passOutcome = interceptPayload('session/prompt', { content: [{ type: 'text', text: 'hello' }] }, RULES, contextFor, noop);
 check('无敏感 handled 为假', passOutcome.handled, false);

@@ -30,6 +30,7 @@ export class SessionState {
    */
   constructor(config) {
     this.config = config;
+    this.disabledRules = config.disabledRulesSet ?? new Set(config.disabledRules ?? []);
     /** @type {Map<string, object>} 占位符注册表 / placeholder registries */
     this.registries = new Map();
     /** @type {Map<string, number>} 连续高风险计数 / consecutive high-risk counts */
@@ -91,6 +92,7 @@ export class SessionState {
     return {
       rules,
       config: this.config,
+      disabledRules: this.disabledRules,
       registry: this.registryFor(sessionId),
       sessionWhitelist: this.whitelistFor(sessionId),
     };

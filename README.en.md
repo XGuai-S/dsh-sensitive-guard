@@ -34,16 +34,34 @@ therefore changes what downstream sees, without touching deltas already delivere
 
 | Value | Placeholder |
 |---|---|
-| keys, private keys, Bearer, JWT, high-entropy strings | `{{SECRET_TOKEN}}` |
-| national id, phone, bank card, passport, address, medical record, name+id | `{{PRIVACY_ID}}` |
+| keys, private keys, Bearer, JWT, privileged passwords, high-entropy strings | `{{SECRET_TOKEN}}` |
+| national identity card (including grouped digits) | `{{ID_CARD}}` |
+| mobile phone numbers (including grouped digits) | `{{PHONE_NO}}` |
+| bank card numbers, CVV/CVC | `{{BANK_CARD}}` |
+| passport numbers | `{{PASSPORT_NO}}` |
+| social-security and medical-insurance cards | `{{SOCIAL_CARD}}` |
+| outpatient and admission numbers, diagnoses, pathology | `{{MEDICAL_INFO}}` |
+| a name paired with an identity number | `{{NAME_AND_ID}}` |
+| physical addresses | `{{HOME_ADDR}}` |
 | account and database passwords, wifi password, cookies, session ids, signed links | `{{CRED_CODE}}` |
 | one-time codes (keyword plus 4–6 digits) | `{{ONE_TIME_CODE}}` |
+| WeChat, QQ, social handles | `{{SOCIAL_ID}}` |
+| order and transaction numbers | `{{TRADE_NO}}` |
+| certificate serials, DNs, key fingerprints | `{{CERT_INFO}}` / `{{KEY_FINGERPRINT}}` |
 | local absolute paths | `{{LOCAL_PATH}}` |
 | IMEI, Android ID, serial numbers | `{{DEVICE_ID}}` |
 | email addresses | `{{EMAIL_ADDR}}` |
-| internal and public IPs | `{{NET_IP}}` |
+| vehicle plates | `{{PLATE_NO}}` |
+| internal IPs | `{{LAN_IP}}` |
+| public IPs | `{{NET_IP}}` |
 | private domains and internal hosts | `{{PRIVATE_URL}}` |
 | database connection credentials | `{{DB_CRED}}` |
+| account balance, savings, credit limit, currency-tagged amounts | `{{BALANCE_AMOUNT}}` |
+
+**One placeholder per meaning**: a phone number and an identity card no longer share a
+placeholder family, so a log reads unambiguously. The same value keeps one placeholder
+within a session, and distinct values never collide: the 2nd–64th value in a category
+gets `_2`…`_64`, and beyond that a digest suffix (`{{PHONE_NO~53e3}}`).
 
 ## Detection rules
 
@@ -71,13 +89,25 @@ suspicious credential when all of these hold:
 - at least three character classes (lower, upper, digit, symbol)
 - at least 12 distinct characters
 - Shannon entropy of at least 3.0 bits per character
+- not a URL (`://`), not a plain path, not a stack frame, not a regex literal
+- contains no `=` (a `key=value` pair belongs to the key-value rule, so the key is
+  not swallowed with the value)
 
 A hit is labelled `【⚠️高熵可疑密钥】` and masked.
 
 ### Exclusions
 
 These are **not** credentials: ports (1–65535), version numbers (`1.2.3`,
-`v2.0.0-beta.1`), and MD5 / SHA-1 / SHA-256 / SHA-512 hex digests.
+`v2.0.0-beta.1`, `v2.14.0-rc.1+build.20261126`), MD5 / SHA-1 / SHA-256 / SHA-512 hex
+digests and `sha256:<hex>` digests, UUIDs, colour values, register addresses, git
+commit hashes, and arithmetic expressions.
+
+## Rule counts
+
+47 main rules (34 BLOCK + 13 MASK) plus 7 OCR rules = **54 rules**, across **26
+placeholder classes**. The itemised inventory is in
+[docs/RULES-INVENTORY.md](docs/RULES-INVENTORY.md); the per-rule explanations are in
+[docs/RULES.md](docs/RULES.md).
 
 ## Whitelist
 

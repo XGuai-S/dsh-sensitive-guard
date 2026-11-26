@@ -14,8 +14,25 @@
  *    to an identity number is. Only the adjacent pair is masked.
  */
 
-/** Placeholder for a combined name + identity document. */
-export const PRIVACY_PAIR = '{{PRIVACY_ID}}';
+/**
+ * 占位符 / Placeholders.
+ *
+ * 一种语义一个占位符。`PRIVACY_PAIR` 早先兼作病历、诊断、门诊号的输出，
+ * 与身份证号共用 `{{PRIVACY_ID}}`，日志里无法区分。病历现在输出
+ * `{{MEDICAL_INFO}}`，姓名+证件输出 `{{NAME_AND_ID}}`。
+ *
+ * One placeholder per meaning. `PRIVACY_PAIR` previously served medical records
+ * and diagnoses as well as identity numbers, so a log reader could not tell them
+ * apart. Medical findings now emit `{{MEDICAL_INFO}}` and a name-plus-document
+ * pair emits `{{NAME_AND_ID}}`.
+ */
+export const PRIVACY_PAIR = '{{NAME_AND_ID}}';
+
+/** 病历占位符 / placeholder for a medical record. */
+export const MEDICAL_INFO = '{{MEDICAL_INFO}}';
+
+/** 住址占位符 / placeholder for a physical address. */
+export const HOME_ADDR = '{{HOME_ADDR}}';
 
 /** Archival container signatures, checked on the leading bytes. */
 const ARCHIVE_SIGNATURES = [
@@ -75,23 +92,39 @@ export function looksBinary(head, name) {
  *
  * A match needs at least three administrative levels ending in a street-level
  * marker, which keeps ordinary prose about a province or city out.
+ *
+ * 这两个规则与 `rules.js` 的 `home-address*` 重叠，但用途不同：它们先跑，
+ * 用更宽松的中文形态覆盖「省市区+小区/楼栋」，`home-address*` 作为门牌号
+ * 兜底。两者都输出 `{{HOME_ADDR}}`，不再混用 `{{PRIVACY_ID}}`——住址属于
+ * 位置信息，与证件号是两类。
+ *
+ * These overlap `rules.js`'s `home-address*` but run first with a looser
+ * Chinese shape, while `home-address*` covers street numbers as a fallback.
+ * Both emit `{{HOME_ADDR}}`: an address is location data, not an identity
+ * number, so they must not share a placeholder.
  */
 const ADDRESS_RULES = [
   {
     level: 'BLOCK',
     id: 'cn-address',
     kind: '住址',
-    to: PRIVACY_PAIR,
-    // 省/自治区 + 市 + 区/县 + 街道/路/号 chain.
-    re: /(?:[\u4e00-\u9fff]{2,8}(?:省|自治区|特别行政区))?[\u4e00-\u9fff]{2,8}(?:市|自治州|地区)[\u4e00-\u9fff]{2,8}(?:区|县|旗)[\u4e00-\u9fff0-9]{0,20}?(?:路|街|道|巷|号|弄|村|镇|小区|大厦|花园|公寓|单元|室)[\u4e00-\u9fff0-9]{0,20}/g,
+    to: HOME_ADDR,
+    // 省/自治区 + 市 + 区/县 + 街道/小区/楼栋 + 门牌。
+    //
+    // 门牌段允许大写字母（`B栋904`）、数字与中文混排：真实地址里楼栋常用
+    // 字母编号，只收中文会在这里截断，留下可读的门牌号。
+    //
+    // The tail accepts uppercase letters, digits, and Chinese together: real
+    // buildings use letter labels, and a Chinese-only tail stopped at `B栋904`.
+    re: /(?:[\u4e00-\u9fff]{2,8}(?:省|自治区|特别行政区))?[\u4e00-\u9fff]{2,8}(?:市|自治州|地区)[\u4e00-\u9fff]{2,8}(?:区|县|旗)[\u4e00-\u9fffA-Za-z0-9]{0,24}?(?:路|街|道|巷|弄|村|镇|小区|花园|公寓|大厦|号楼|栋|单元|室)[\u4e00-\u9fffA-Za-z0-9-]{0,24}/g,
   },
   {
     level: 'BLOCK',
     id: 'street-address',
     kind: '住址',
-    to: PRIVACY_PAIR,
+    to: HOME_ADDR,
     // A street number plus a building, which is specific enough to act on.
-    re: /[\u4e00-\u9fff]{2,12}(?:路|街|大道|巷)[0-9]{1,5}号[\u4e00-\u9fff0-9]{0,20}(?:室|层|楼|单元|栋|座|号)/g,
+    re: /[\u4e00-\u9fff]{2,12}(?:路|街|大道|巷)[0-9]{1,5}号[\u4e00-\u9fffA-Za-z0-9]{0,24}(?:室|层|楼|单元|栋|座|号)/g,
   },
 ];
 
@@ -101,7 +134,7 @@ const MEDICAL_RULES = [
     level: 'BLOCK',
     id: 'medical-record',
     kind: '身份隐私',
-    to: PRIVACY_PAIR,
+    to: MEDICAL_INFO,
     // 标签 + 取值。取值不能是证件号或护照号，那些规则已经先跑过。
     // Label plus value; the value must not be an id or passport shape, because
     // those rules run earlier and would already have replaced it.
@@ -111,14 +144,14 @@ const MEDICAL_RULES = [
     level: 'BLOCK',
     id: 'diagnosis-line',
     kind: '身份隐私',
-    to: PRIVACY_PAIR,
+    to: MEDICAL_INFO,
     re: /(?:诊断|结论|病理)\s*[:：]\s*[\u4e00-\u9fffA-Za-z0-9，,、\s]{4,40}/g,
   },
   {
     level: 'BLOCK',
     id: 'medical-id',
     kind: '身份隐私',
-    to: PRIVACY_PAIR,
+    to: MEDICAL_INFO,
     // 兜底：标签后跟任意字母数字组合（含被护照规则抢先的情况）。
     // Fallback: a label followed by any alphanumeric run, including values the
     // passport rule would otherwise claim first.
@@ -136,12 +169,26 @@ const MEDICAL_RULES = [
  * replaced first and the name is left behind. `buildRules` places it first for
  * that reason.
  */
+/**
+ * A name immediately followed by an identity number.
+ *
+ * The pair is masked as a unit because either half alone is common; only the
+ * adjacency makes it identifying.
+ *
+ * 姓名必须是**真正的姓名**，不能是「身份证」「证件号」这类标签词。原正则用
+ * 宽松的 `[\u4e00-\u9fff]{2,4}`，把 `身份证` 当成了姓名，于是纯证件号被归类
+ * 为「姓名+证件」而跳过 `cn-id-card`。现在用否定环视排除标签词。
+ *
+ * The leading token must be an actual name, not a label such as 身份证. The
+ * loose character run previously swallowed the label, so a bare identity number
+ * was classified as a name-plus-id pair and `cn-id-card` never ran.
+ */
 export const NAME_ID_PAIR_RULE = {
   level: 'BLOCK',
-    id: 'name-id-pair',
+  id: 'name-id-pair',
   kind: '身份隐私',
   to: PRIVACY_PAIR,
-  re: /[\u4e00-\u9fff]{2,4}(?=[^\n]{0,8}?(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d))[^\n]{0,8}?(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)/g,
+  re: /(?!身份证|证件号|证件号码|护照号|护照|银行卡|卡号|号码|手机号|手机|电话|邮箱|账号|帐号)(?<![\u4e00-\u9fff])[\u4e00-\u9fff]{2,4}(?=[^\n]{0,8}?(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d))[^\n]{0,8}?(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)/g,
 };
 
 /**
