@@ -265,7 +265,11 @@ export function applyReplacements(messages, replacements) {
       const replacement = replacements.get(block.attachment?.attachmentId);
       if (replacement === undefined) return block;
       touched = true;
-      return { ...block, attachment: replacement };
+      // 合并而非替换：saveImage 返回的新引用通常只有 attachmentId/mediaType/name，
+      // 若直接顶替会丢掉 width/height/bytes，DSH 无法渲染图片，表现为「附件发不了」。
+      // Merge instead of replace: keep the original width/height/bytes so DSH can
+      // still render the image after redaction/compression.
+      return { ...block, attachment: { ...block.attachment, ...replacement } };
     });
     if (!touched) return message;
     changed = true;

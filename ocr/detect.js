@@ -83,7 +83,31 @@ export function looksBinary(head, name) {
     return true;
   }
   if (!(head instanceof Uint8Array)) return false;
+  // 已知图片魔数优先：PNG/JPEG/GIF/WebP 的文件头里本就可能含 0x00
+  // （PNG 的 89 50 4E 47 0D 0A 1A 0A 后紧跟 00 00 00 0D）。
+  // 早期实现只凭「前 16 字节含 NUL」判定二进制，导致所有 PNG 被误判、
+  // OCR 被永久跳过。图片必须先看魔数再判 NUL。
+  // Recognised image magic wins over the NUL heuristic: PNG headers contain NUL.
+  const isImage = isKnownImageHead(head);
+  if (isImage) return false;
   for (const byte of head) if (byte === 0x00) return true;
+  return false;
+}
+
+/**
+ * 前导字节是否为已知图片（PNG/JPEG/GIF/WebP/BMP）。
+ * @param {Uint8Array} head
+ */
+function isKnownImageHead(head) {
+  if (head.length >= 8
+    && head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47
+    && head[4] === 0x0d && head[5] === 0x0a && head[6] === 0x1a && head[7] === 0x0a) return true; // PNG
+  if (head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return true; // JPEG
+  if (head.length >= 6 && head[0] === 0x47 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x38
+    && (head[4] === 0x37 || head[4] === 0x39) && head[5] === 0x61) return true; // GIF87a/89a
+  if (head.length >= 12 && head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46
+    && head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50) return true; // WEBP
+  if (head.length >= 2 && head[0] === 0x42 && head[1] === 0x4d) return true; // BMP
   return false;
 }
 

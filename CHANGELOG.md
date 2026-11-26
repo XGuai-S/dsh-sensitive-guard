@@ -16,6 +16,21 @@
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-11-26
+
+继续修复图片附件问题（OCR/替换链路）。
+
+### 修正
+
+- **looksBinary 把 PNG 误判为二进制**。PNG 魔数 `89 50 4E 47 0D 0A 1A 0A` 后紧跟
+  `00 00 00 0D`，旧逻辑只看「前 16 字节是否含 NUL」，导致所有 PNG 被判为二进制、
+  OCR 被永久跳过。改为先识别 PNG/JPEG/GIF/WebP/BMP 魔数，图片一律不当二进制。
+- **applyReplacements 整段替换 attachment 丢字段**。涂改/压缩后 `saveImage` 返回的引用
+  通常只有 `attachmentId/mediaType/name`，旧代码直接用它顶替原 attachment，丢掉
+  `width/height/bytes/sha256`，DSH 无法渲染图片，表现为「附件发不了」。改为合并：
+  保留原字段，只覆盖新引用提供的字段。
+- 新增 `test/image.test.mjs`（12 项），覆盖图片魔数判定与附件字段合并。
+
 ## [1.7.1] - 2026-11-26
 
 修复图片附件发送失败。
