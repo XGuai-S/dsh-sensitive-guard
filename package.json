@@ -1,6 +1,6 @@
 {
   "name": "dsh-sensitive-guard",
-  "version": "1.7.9",
+  "version": "1.7.10",
   "description": "Pre-gateway sensitive content guard for DeepSeek Harness. Intercepts the session/prompt HTTP body before it reaches the inbox, so plaintext never lands in inbox or session. Three-level classification cleans and continues instead of aborting; only bypass-attack instructions are refused. Dual-direction, chunked and recursive scanning, structured logs, image OCR and QR.",
   "type": "module",
   "license": "MIT",

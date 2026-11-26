@@ -190,8 +190,8 @@ check('全角冒号', scan('卡号：6221885935650739436').content, '卡号：{{
 check('空格分组卡号', scan('卡号：6221 8859 3565 0739 436').content.includes('{{BANK_CARD}}'), true);
 check('英文 credit card', scan('credit card 6221885935650739436').content.includes('{{BANK_CARD}}'), true);
 check('银行卡标签', scan('银行卡6222021202012345678').content, '银行卡{{BANK_CARD}}');
-// 无标签仍走 Luhn 门控，避免任意长数字被当卡号。
-check('无标签 Luhn 不合放行', scan('6221885935650739436').level, 'PASS');
+// 无标签 BIN 门控（v1.7.10）：62 开头即命中，不再要求 Luhn。
+check('无标签 62 开头命中', scan('6221885935650739436').level, 'BLOCK');
 check('无标签 Luhn 通过命中', scan('6222021234567890128').level, 'BLOCK');
 // 样板卡与端口不误报。
 check('样板卡不命中', scan('卡号 6222000000000000').level, 'PASS');

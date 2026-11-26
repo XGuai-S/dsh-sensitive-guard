@@ -981,8 +981,20 @@ export function validateBankCard(value) {
   if (isTestCard(digits)) return false;
   if (isWhitelistedValue(digits)) return false;
   if (isExcluded(digits)) return false;
-  return luhn(digits);
+  // 不再要求 Luhn：用户要求「单独数字符合也要脱敏」。Luhn 会漏掉大量
+  // 真实格式但校验位不合的卡号（如 62 开头的银联号），误伤成本高于漏检成本。
+  // 改为按常见卡组织 BIN 前缀判定，覆盖现有开头，减少把任意长数字当卡号。
+  // Relaxed from Luhn to well-known BIN prefixes per user request: a bare
+  // 16–19 digit number is masked when it starts with a recognised card BIN.
+  return CARD_BIN_RE.test(digits);
 }
+
+/**
+ * 常见银行卡 BIN 前缀 / Well-known card issuer identification prefixes.
+ * 62 银联、4 Visa、51-55/2221-2720 Mastercard、34/37 Amex、6011/65 Discover、
+ * 35 JCB、30/36/38 Diners。只认这些开头，避免把订单号/流水号误判成卡号。
+ */
+const CARD_BIN_RE = /^(?:62|4|5[1-5]|2[2-7]|3[4-7]|6011|65|35|30|36|38)/;
 
 /**
  * 样板卡号 / Sample card numbers.
