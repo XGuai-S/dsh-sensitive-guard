@@ -23,9 +23,16 @@ node ocr/selfcheck.mjs       # 本机能力自检 / what works here
 npm test                     # 104 项回归 / regression suite
 ```
 
-在 DSH 的 **插件 → 添加插件** 中安装本目录，或用 `plugin_manager install_bundle`。
-Install this directory through **Plugins → Add plugin**, or with
-`plugin_manager install_bundle`.
+在 DSH 的 **插件 → 添加插件** 中安装本目录，或用下面的命令（把 `web` 换成你的 profile 名称）：
+Install this directory through **Plugins → Add plugin**, or use the command below
+(replace `web` with your profile name):
+
+```bash
+dsh plugin --profile web add <本目录绝对路径 / /absolute/path/to/this/directory>
+```
+
+带一键复制按钮的完整命令页：[`market/install.html`](market/install.html)。
+Agent 方式：调用 `plugin_manager`，`action: install_bundle`，`target: 本目录绝对路径`。
 
 ## 能力概览 / Capabilities
 
