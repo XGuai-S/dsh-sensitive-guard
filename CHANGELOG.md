@@ -16,6 +16,20 @@
 
 ## [Unreleased]
 
+## [1.7.7] - 2026-11-26
+
+真正解决"文件内容进入模型/中转未被脱敏"。
+
+### 修正（关键 bug）
+
+- **`tools/post-execute` 扫错了对象**。waterfall 回调是 `(exec, result, next)`：
+  工具结果在第二个参数 `result`，而 `next()` 返回的是下游 decision（默认
+  `{kind:'accept'}`，无 content/value）。旧实现（`_result` 被忽略、只扫
+  `decision.content/value`）永远扫不到文件内容，所以 v1.7.5 声称的修复从未生效。
+  现在改为扫描 `result.content` / `result.value`，并把它作为脱敏后的 decision 返回。
+- 效果：read/cat 读出的明文文件内容在进入模型与中转前变成占位符；本地文件不变。
+- 560 条测试全绿。
+
 ## [1.7.6] - 2026-11-26
 
 修复绝对路径里的数字目录名被误判为社交账号。

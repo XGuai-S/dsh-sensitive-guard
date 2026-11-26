@@ -395,7 +395,7 @@ export function apply(ctx, rawConfig) {
   });
 
   // ==================== 2. post-execute ====================
-  ctx.on('tools/post-execute', async (exec, _result, next) => {
+  ctx.on('tools/post-execute', async (exec, result, next) => {
     const decision = await next();
     const sessionId = exec?.agent?.id;
     try {
@@ -405,25 +405,27 @@ export function apply(ctx, rawConfig) {
 
       const context = contextFor(sessionId);
       const totals = new ResultAccumulator();
-      let nextDecision = decision;
 
-      // 用 sanitizeArgs 递归处理：工具结果可能是 text block 数组、纯字符串数组、
-      // 或含字符串字段的对象。scanContent 只认 type=text 的块，会漏掉后两种，
-      // 导致文件内容（明文）从 tools/post-execute 流入模型与中转。
-      // sanitizeArgs 会跳过 attachment/image 容器与标识符字段，安全。
-      if (decision.content !== undefined) {
-        const result = sanitizeArgs(decision.content, rules, context);
-        totals.add(result);
-        if (result.changed) nextDecision = { ...nextDecision, content: result.value };
+      // 关键：工具结果在 waterfall 的第二个参数 `result` 里，不在 `decision` 里。
+      // `next()` 返回的是下游 decision（默认 {kind:'accept'}），没有 content/value。
+      // 旧实现只扫 decision，导致文件内容（明文）原样流入模型与中转。
+      // The tool result is the 2nd waterfall arg, NOT the decision. Scan `result`
+      // and return a decision whose content/value carries the masked text.
+      let nextDecision = decision;
+      if (result?.content !== undefined) {
+        const scanned = sanitizeArgs(result.content, rules, context);
+        totals.add(scanned);
+        if (scanned.changed) nextDecision = { ...nextDecision, content: scanned.value };
       }
-      if (decision.value !== undefined && nextDecision.content === undefined) {
-        const result = sanitizeArgs(decision.value, rules, context);
-        totals.add(result);
-        if (result.changed) nextDecision = { ...nextDecision, value: result.value };
+      if (result?.value !== undefined && result?.content === undefined && nextDecision.content === undefined) {
+        const scanned = sanitizeArgs(result.value, rules, context);
+        totals.add(scanned);
+        if (scanned.changed) nextDecision = { ...nextDecision, value: scanned.value };
       }
 
       if (!totals.matched) return decision;
       publish(totals.toResult(), 'tool_result', JSON.stringify(totals.counts));
+      logger.info(`工具结果已前置脱敏 level=${totals.level}，明文未进入模型与中转`);
       return totals.changed ? nextDecision : decision;
     } catch (error) {
       logger.warn(`扫描异常 ${error?.message ?? 'unknown'}，已放行工具结果`);
