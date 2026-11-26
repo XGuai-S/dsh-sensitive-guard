@@ -550,7 +550,12 @@ const BASE_RULES = [
     //
     // 账号上限放宽到 64：平台账号可以很长，`{5,24}` 会把长账号整条漏掉。
     // The account bound is 64: real handles can be long, and `{5,24}` missed them.
-    re: /((?:微信|QQ|qq|wx|wechat|weixin)\s*(?:号|ID|id)?\s*[:：=]?\s*)([A-Za-z0-9_/-]{5,64})(?![\w-])/g,
+    // 右边界：账号后不能紧跟路径分隔符。`QQ 123456789\脱敏测试.txt` 里的
+    // 数字是 Windows 目录名（QQ 下载目录），不是社交账号；移除 local-path 后
+    // 这类路径片段会被本规则误伤。遇到 `\xxx` 或 `/xxx`（路径）就跳过。
+    // Right boundary: skip when the account is immediately followed by a path
+    // separator, e.g. `QQ 123456789\file.txt` is a Windows directory, not an ID.
+    re: /((?:微信|QQ|qq|wx|wechat|weixin)\s*(?:号|ID|id)?\s*[:：=]?\s*)([A-Za-z0-9_/-]{5,64})(?![\w-])(?![\\/][^\s])/g,
     keepGroup: 1,
     validate: (whole) => {
       const value = /^\s*[\s\S]*?[:：=]?\s*([A-Za-z0-9_/-]+)\s*$/.exec(whole);

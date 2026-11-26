@@ -247,6 +247,7 @@ check('长账号不再漏检', scan('微信号 abcdefghij1234567890123456').cont
 check('裸标签不遮蔽', scan('微信').level, 'PASS');
 check('微信号裸标签不遮蔽', scan('微信号').level, 'PASS');
 check('提及微信不遮蔽', scan('我和微信的朋友聊天').level, 'PASS');
+check('路径中QQ号目录不遮蔽', scan('D:\\OverDownload\\QQ 123456789\\脱敏测试.txt').content, 'D:\\OverDownload\\QQ 123456789\\脱敏测试.txt');
 
 section('余额脱敏（v1.6）');
 check('中文余额带千分位', scan('账户余额 1,234,567.89 元').level, 'BLOCK');
