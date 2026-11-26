@@ -4,11 +4,17 @@
 
 ## 可点击复制的安装命令页面
 
-`market/install.html` 是一个自包含页面，把三条安装命令做成带「复制」按钮的卡片，可直接双击用浏览器打开，或托管到 GitHub Pages。
+`market/install.html` 是一个自包含页面，把四条安装命令做成带「复制」按钮的卡片。
 
-- 本地：直接打开 `market/install.html`
+打开方式（选其一）：
+
+- **在线（推荐，直接渲染出按钮）**：
+  `https://cdn.jsdelivr.net/gh/XGuai-S/dsh-sensitive-guard@main/market/install.html`
+- 本地：双击打开 `market/install.html`
 - GitHub Pages：仓库 Settings → Pages → Source 选 `main` 分支 `/` 根目录，然后访问
   `https://xguai-s.github.io/dsh-sensitive-guard/market/install.html`
+
+注意：`raw.githubusercontent.com/...` 链接返回纯文本源码，浏览器不会渲染 HTML，因此看不到按钮；要用上面的在线地址或本地文件。
 
 页面内每条命令右侧的按钮点击即复制，带「已复制」反馈；优先用 `navigator.clipboard`，不支持时降级到 `execCommand`。
 
