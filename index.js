@@ -118,7 +118,11 @@ export function resolveConfig(raw) {
     interceptPromptBody: config.interceptPromptBody !== false,
     maskUserMessages: config.maskUserMessages !== false,
     maskToolResults: config.maskToolResults !== false,
-    maskResponses: config.maskResponses !== false,
+    // 默认关闭响应侧脱敏：用户要求「发出去的脱敏，助手发回来的不脱敏」。
+    // 输入侧（用户消息、工具结果）照常脱敏，厂商看不到明文；
+    // 输出侧不再清洗，助手的回复原样显示给用户。
+    // 注意：输出是厂商模型生成的，关闭清洗不改变厂商已看到的内容。
+    maskResponses: config.maskResponses === true,
     maskSubagentReturns: config.maskSubagentReturns !== false,
     auditRequests: config.auditRequests !== false,
 
