@@ -3,21 +3,20 @@
       name: 'dsh-sensitive-guard'
       config:
         enabled: true
-        # 鐠嬪啳鐦弮浣界熅閿涙rue 閺冩儼鐑︽潻鍥у弿闁劍顥呭ù瀣剁礉娴犲懐鏁ゆ禍搴ょ殶鐠?        bypassSanitize: false
-        # 濞ｅ嘲鎮庨弬鍥ㄦ拱閿涙rue 閺冭泛褰у〒鍛存珟閺佸繑鍔呴悧鍥唽閿涘牆缍嬮崜宥夌帛鐠併倕鍑￠幐澶嬬濞叉鐤勯悳甯礆
+        # 閻犲鍟抽惁顖炲籍娴ｇ晫鐔呴柨娑欘劗rue 闁哄啯鍎奸悜锔芥交閸パ冨伎闂侇喓鍔嶉ˉ鍛圭€ｅ墎绀夊ù鐘叉噽閺併倖绂嶆惔銈囨閻?        bypassSanitize: false
+        # 婵烇絽鍢查幃搴ㄥ棘閸ャ劍鎷遍柨娑欘劗rue 闁哄啳娉涜ぐ褍銆掗崨瀛樼彑闁轰礁绻戦崝鍛存偋閸ヮ煈鍞介柨娑樼墕缂嶅宕滃澶屽笡閻犱降鍊曢崙锟犲箰婢跺顏告繛鍙夘殔閻ゅ嫰鎮崇敮顔剧
         partialBlock: false
-        # HTTP 閸撳秶鐤嗛幏锔藉焻閿涙艾婀弰搴㈡瀮鏉╂稑鍙?inbox 娑斿澧犻弨鐟板晸鐠囬攱鐪版担鎾扁偓?        # 鏉╂瑦妲搁崬顖欑閼充粙妯嗗銏℃閺傚洩绻?inbox 閻ㄥ嫪缍呯純顕嗙礉婢惰精瑙﹂崡铏杹鐞涘被鈧?        interceptPromptBody: true
-        # 鐠囧﹥鏌囬敍姘愁唶瑜版洘鐦℃稉顏勫煂鏉?connection/request 閻ㄥ嫯顕Ч鍌︾礉绾喛顓绘导鐘虹翻闁岸浜?        diagnoseTransport: true
+        # HTTP 闁告挸绉堕悿鍡涘箯閿旇棄鐒婚柨娑欒壘濠€顏堝及鎼淬垺鐎弶鈺傜☉閸?inbox 濞戞柨顑呮晶鐘诲绩閻熸澘鏅搁悹鍥敱閻増鎷呴幘鎵佸亾?        # 閺夆晜鐟﹀Σ鎼佸船椤栨瑧顏遍柤鍏呯矙濡棗顫㈤姀鈩冾潠闁哄倸娲╃换?inbox 闁汇劌瀚紞鍛磾椤曞棛绀夊鎯扮簿鐟欙箓宕￠搹顐ｆ澒閻炴稑琚埀?        interceptPromptBody: true
+        # 閻犲洤锕ラ弻鍥晬濮樻剚鍞剁憸鐗堟礃閻︹剝绋夐鍕厒閺?connection/request 闁汇劌瀚顒€效閸岋妇绀夌痪顓у枦椤撶粯瀵奸悩铏圭炕闂侇偅宀告禍?        diagnoseTransport: true
         blockBypass: true
 
-        # 閸欏苯鎮滈幍顐ｅ伎
-        maskUserMessages: true
+        # 闁告瑥鑻幃婊堝箥椤愶絽浼?        maskUserMessages: true
         maskToolResults: true
         maskResponses: false
         maskSubagentReturns: true
         auditRequests: true
 
-        # 鐠囧棗鍩嗗鈧崗?        detectHighEntropy: true
+        # 閻犲洤妫楅崺鍡楊嚕閳ь剟宕?        detectHighEntropy: false
         detectAddresses: true
         detectMedical: true
         detectQr: true
@@ -27,15 +26,15 @@
         maskDbCredentials: true
         maskPublicKeys: false
 
-        # URL 閸掑棛楠囬敍姝燼lse | internal | all
+        # URL 闁告帒妫涙鍥晬濮濈嚰lse | internal | all
         maskUrls: false
 
-        # 閺冦儱绻旀稉搴℃啞鐠€?        logMasks: true
+        # 闁哄啨鍎辩换鏃€绋夋惔鈩冨暈閻犫偓?        logMasks: true
         logFormat: json
         highRiskAlertAfter: 6
         perSessionStats: true
 
-        # 閸ュ墽澧?        maxImagesPerTurn: 3
+        # 闁搞儱澧芥晶?        maxImagesPerTurn: 3
         ocr: true
         ocrMode: local
         imageBackend: auto
@@ -48,5 +47,5 @@
         compressImages: true
         compressMaxDimension: 2048
 
-        # 娴兼俺鐦芥稉瀛樻閻ц棄鎮曢崡鏇礄鐠囶垰鍨介崘鍛啇閿涘苯缍嬮崜宥勭窗鐠囨繀绗夐崘宥堝姎閺佸骏绱?        sessionWhitelist: []
-        # 閸忋劌鐪闀愮畽閻ц棄鎮曢崡?        globalWhitelist: []
+        # 濞村吋淇洪惁鑺ョ▔鐎涙ɑ顦ч柣褑妫勯幃鏇㈠础閺囶亞绀勯悹鍥跺灠閸ㄤ粙宕橀崨顓у晣闁挎稑鑻紞瀣礈瀹ュ嫮绐楅悹鍥ㄧ箑缁楀宕樺鍫濆闁轰礁楠忕槐?        sessionWhitelist: []
+        # 闁稿繈鍔岄惇顒€顫濋梹鎰暯闁谎嗘閹洟宕?        globalWhitelist: []
