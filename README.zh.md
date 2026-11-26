@@ -1,5 +1,7 @@
 # 敏感内容守卫
 
+> 安装命令（带一键复制按钮）：打开 [`market/install.html`](market/install.html)，或在 DSH 插件市场添加来源 `https://raw.githubusercontent.com/XGuai-S/dsh-sensitive-guard/main/market/index.json`。
+
 DeepSeek Harness 的请求前置守卫：在内容发往中转网关之前完成识别、脱敏与拦截判定。
 执行优先级高于路由、重试、模型调度，全程无交互、不询问。
 

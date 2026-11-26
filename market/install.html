@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dsh-sensitive-guard 安装命令</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #0f1115; color: #e6e8eb;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #9aa3ad; font-size: 14px; margin: 0 0 28px; }
+  .card {
+    background: #171a21; border: 1px solid #2a2f3a;
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 6px; color: #cfd6de; }
+  .card p { margin: 0 0 12px; font-size: 13px; color: #9aa3ad; }
+  .cmdbox {
+    display: flex; align-items: stretch; gap: 10px;
+    background: #0b0d11; border: 1px solid #2a2f3a;
+    border-radius: 8px; padding: 8px 8px 8px 14px;
+  }
+  code {
+    flex: 1; font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+    font-size: 13px; color: #8fd3ff; word-break: break-all;
+    display: flex; align-items: center; user-select: all;
+  }
+  button {
+    flex: 0 0 auto; cursor: pointer;
+    background: #2563eb; color: #fff; border: 0;
+    border-radius: 6px; padding: 8px 16px; font-size: 13px;
+    font-weight: 600; transition: background .15s;
+  }
+  button:hover { background: #1d4ed8; }
+  button.done { background: #16a34a; }
+  button.err { background: #dc2626; }
+  .note { font-size: 12px; color: #6b7280; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>dsh-sensitive-guard 安装命令</h1>
+  <p class="sub">前置敏感内容拦截与脱敏插件 · 版本 1.7.0 · 点击右侧按钮复制</p>
+
+  <div class="card">
+    <h2>① 添加市场来源（推荐）</h2>
+    <p>在 DSH 的 Plugins / Discover 页面「添加来源」，粘贴下方 URL，即可搜索并一键安装。</p>
+    <div class="cmdbox">
+      <code id="c1">https://raw.githubusercontent.com/XGuai-S/dsh-sensitive-guard/main/market/index.json</code>
+      <button data-target="c1">复制</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>② 命令行安装（最新版）</h2>
+    <p>把 <b>web</b> 换成你的 profile 名称。</p>
+    <div class="cmdbox">
+      <code id="c2">dsh plugin --profile web add dsh-sensitive-guard</code>
+      <button data-target="c2">复制</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>③ 命令行安装（固定版本 · 可复现）</h2>
+    <p>锁定到当前索引指向的精确 commit，适合脚本与团队统一。</p>
+    <div class="cmdbox">
+      <code id="c3">dsh plugin --profile web add github:XGuai-S/dsh-sensitive-guard#f5eaf91a4493129b65f55a85a3e9018f5bd195d5</code>
+      <button data-target="c3">复制</button>
+    </div>
+  </div>
+
+  <p class="note">源码：github.com/XGuai-S/dsh-sensitive-guard</p>
+</div>
+
+<script>
+document.querySelectorAll('button[data-target]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var text = document.getElementById(btn.getAttribute('data-target')).textContent;
+    function ok() {
+      var old = btn.textContent;
+      btn.textContent = '已复制';
+      btn.classList.add('done');
+      setTimeout(function () { btn.textContent = old; btn.classList.remove('done'); }, 1600);
+    }
+    function fail() {
+      var old = btn.textContent;
+      btn.textContent = '复制失败';
+      btn.classList.add('err');
+      setTimeout(function () { btn.textContent = old; btn.classList.remove('err'); }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok).catch(fail);
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy') ? ok() : fail(); } catch (e) { fail(); }
+      document.body.removeChild(ta);
+    }
+  });
+});
+</script>
+</body>
+</html>

@@ -2,9 +2,20 @@
 
 本目录提供一个符合 DSH plugin market index **format 1** 的索引文件，让 `dsh-sensitive-guard` 可被插件市场发现并安装，无需等待官方榜单收录。
 
+## 可点击复制的安装命令页面
+
+`market/install.html` 是一个自包含页面，把三条安装命令做成带「复制」按钮的卡片，可直接双击用浏览器打开，或托管到 GitHub Pages。
+
+- 本地：直接打开 `market/install.html`
+- GitHub Pages：仓库 Settings → Pages → Source 选 `main` 分支 `/` 根目录，然后访问
+  `https://xguai-s.github.io/dsh-sensitive-guard/market/install.html`
+
+页面内每条命令右侧的按钮点击即复制，带「已复制」反馈；优先用 `navigator.clipboard`，不支持时降级到 `execCommand`。
+
 ## 文件
 
 - `index.json` — 索引文档（已用 DSH 内置校验器 `parseMarketIndex` 验证通过）
+- `install.html` — 带复制按钮的安装命令页面
 - `HOWTO.md` — 本说明
 
 ## 安装指向
