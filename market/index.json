@@ -1,0 +1,84 @@
+{
+  "format": 1,
+  "title": {
+    "en": "dsh-sensitive-guard catalog",
+    "zh": "敏感内容拦截与脱敏守卫目录"
+  },
+  "description": {
+    "en": "Self-hosted catalog for the dsh-sensitive-guard plugin: pre-gateway PII and secret redaction before prompts reach the inbox or model.",
+    "zh": "dsh-sensitive-guard 插件的自托管目录：在提示进入 inbox 或模型前，对隐私与密钥做前置脱敏。"
+  },
+  "metadata": {
+    "categories": {
+      "security": {
+        "title": { "en": "Security", "zh": "安全" }
+      }
+    },
+    "labels": {
+      "install-verified": {
+        "title": { "en": "Install verified", "zh": "安装已验证" }
+      },
+      "risk-pending": {
+        "title": { "en": "Audit pending", "zh": "审计待定" }
+      }
+    },
+    "sortKeys": {
+      "stars": {
+        "title": { "en": "GitHub stars", "zh": "GitHub 星标" },
+        "order": "desc"
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "dsh-sensitive-guard",
+      "title": {
+        "en": "Sensitive Guard — pre-gateway redaction",
+        "zh": "敏感内容守卫 — 前置脱敏"
+      },
+      "description": {
+        "en": "Pre-gateway sensitive content guard. Masks phones, IDs, bank cards, secrets, addresses and more before the prompt reaches the inbox or model; dual-direction scanning, image OCR, QR, recursive JSON and base64 decoding. Sensitive values are never written to session logs in plaintext.",
+        "zh": "前置敏感内容守卫。在提示进入 inbox 或模型之前，脱敏手机、身份证、银行卡、密钥、住址等；支持双向扫描、图片 OCR、二维码、JSON 与 base64 递归解码。敏感值绝不以明文写入会话日志。"
+      },
+      "author": "XGuai-S",
+      "homepage": "https://github.com/XGuai-S/dsh-sensitive-guard",
+      "repository": {
+        "url": "https://github.com/XGuai-S/dsh-sensitive-guard"
+      },
+      "metadata": {
+        "category": "security",
+        "keywords": [
+          "dsh-sensitive-guard",
+          "pii",
+          "redaction",
+          "secrets",
+          "security",
+          "dlp",
+          "ocr",
+          "敏感信息",
+          "脱敏",
+          "密钥保护",
+          "隐私保护"
+        ],
+        "labels": ["risk-pending"],
+        "sortKeys": {
+          "stars": 0
+        }
+      },
+      "versions": [
+        {
+          "version": "1.7.0",
+          "publishTimestamp": 1795673209,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/XGuai-S/dsh-sensitive-guard",
+            "commit": "203cbdff9fa809c0fe5adff27da283dc09fa486d"
+          },
+          "engines": {
+            "dsh": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.2 || >=0.2.2-rc.5 <0.2.3 || >=0.2.3 <0.4.0"
+          }
+        }
+      ]
+    }
+  ]
+}

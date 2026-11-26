@@ -35,6 +35,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "docs",
+    "market",
     "test",
     "icon.svg",
     "README.md",
@@ -55,7 +56,8 @@
     "secrets"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "dsh": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.2 || >=0.2.2-rc.5 <0.2.3 || >=0.2.3 <0.4.0"
   },
   "scripts": {
     "test": "node test/regression.mjs && node test/prebody.test.mjs && node test/architecture.test.mjs && node test/rules-coverage.test.mjs",
