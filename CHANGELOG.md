@@ -16,6 +16,28 @@
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-26
+
+修复图片附件发送失败。
+
+### 修正
+
+- **图片附件发送失败**。`local-path` 规则把 `attachment.name` 里的绝对路径
+  （如 `C:\...\屏幕截图(1).png`）替换成 `{{LOCAL_PATH}}).png`，DSH 无法按原文件名
+  解析附件，导致图片发送失败（且哪个模型都一样）。移除 `local-path` 规则；
+  规则数由 47 降为 46。
+- **附件元数据跳过脱敏**。`sanitizeArgs` 遇到 `attachment` / `attachments`
+  容器或 `type:image` 块时整体放行，文件名、路径、哈希、mediaType 原样透传，
+  避免破坏 DSH 的附件定位。
+- **高熵兜底误报路径**。`local-path` 移除后，`/storage/emulated/0/a.jpg`
+  这类绝对路径落入 `high-entropy` 被误判为密钥。`isHighEntropy` 增加绝对路径排除。
+- `{{LOCAL_PATH}}` 占位符常量保留仅为兼容，不再有任何规则产生它。
+
+### 验证
+
+- 图片附件 payload 诊断：脱敏前后 `changed=false`，文件名原样保留。
+- 四套测试全绿（535 条）。
+
 ## [1.7.0] - 2026-11-26
 
 全规则验证。为 54 条规则各建了专属命中用例，逐条核对；过程中发现 3 处真实缺陷，

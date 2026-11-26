@@ -113,11 +113,11 @@ check('流水号', scan('流水号: 202401011234567890').level, 'MASK');
 check('证书序列号', scan('证书序列号: 0A1B2C3D4E5F6071').level, 'MASK');
 check('指纹', scan('fingerprint: aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd').level, 'MASK');
 
-section('MASK：本地路径');
-check('Windows 路径', scan('C:\\Users\\x\\y.js').level, 'MASK');
-check('Android storage', scan('/storage/emulated/0/a.jpg').level, 'MASK');
-check('Android sdcard', scan('/sdcard/Download/a.txt').level, 'MASK');
-check('Linux root', scan('/root/.ssh/id_rsa').level, 'MASK');
+section('PASS：本地路径不再脱敏（local-path 已移除，避免破坏附件）');
+check('Windows 路径', scan('C:\\Users\\x\\y.js').level, 'PASS');
+check('Android storage', scan('/storage/emulated/0/a.jpg').level, 'PASS');
+check('Android sdcard', scan('/sdcard/Download/a.txt').level, 'PASS');
+check('Linux root', scan('/root/.ssh/id_rsa').level, 'PASS');
 
 section('PASS：白名单与无敏感');
 check('回环保留', scan('127.0.0.1').level, 'PASS');
@@ -293,8 +293,8 @@ for (const prefix of STRIPE_PREFIXES) {
   const sample = `${prefix}${'EXAMPLE'.repeat(5)}0000`;
   check(`Stripe ${prefix} 完整替换`, scan(sample).content, '{{SECRET_TOKEN}}');
 }
-check('SCP 公网主机不误判邮箱', scan('scp deploy@host.com:/srv/data').content, 'scp deploy@host.com:{{LOCAL_PATH}}');
-check('SCP 保持 MASK 非 BLOCK', scan('scp deploy@host.com:/srv/data').level, 'MASK');
+check('SCP 公网主机不误判邮箱', scan('scp deploy@host.com:/srv/data').content, 'scp deploy@host.com:/srv/data');
+check('SCP 保持 PASS（路径不脱敏）', scan('scp deploy@host.com:/srv/data').level, 'PASS');
 check('带括号分组手机号', scan('(138)0013-8002').content.includes('{{PHONE_NO}}'), true);
 check('全角数字手机号', scan('手机号 １３８００１３８００２').content.includes('{{PHONE_NO}}'), true);
 check('制表符分组身份证', scan('1101011990\t0307\t4513').content.includes('{{ID_CARD}}'), true);
@@ -307,7 +307,7 @@ check('全局白名单运行态合并后生效', (() => {
   globalConfig.whitelist = [...new Set([...globalConfig.whitelist, ...globalConfig.globalWhitelist])];
   return runSanitize('real@corp.org', buildFullRules(globalConfig), { config: globalConfig, registry: createRegistry() }).content;
 })(), 'real@corp.org');
-check('家目录速写路径遮蔽', scan('~/Documents/private.txt').content, '{{LOCAL_PATH}}');
+check('家目录速写路径不脱敏', scan('~/Documents/private.txt').content, '~/Documents/private.txt');
 
 section('占位符语义拆分（v1.4）');
 // 一种语义一个占位符：同一段文本里不同类型的值必须能区分开。
@@ -358,8 +358,8 @@ section('注册表容量（v1.4）');
   const reg = createRegistry();
   const localCtx = { config, registry: reg };
   let last = '';
-  for (let i = 0; i < 80; i += 1) last = runSanitize(`/var/log/app${i}.log`, RULES, localCtx).content;
-  check('序号不超过阈值', /\{\{LOCAL_PATH_\d{1,2}\}\}/.test(last) || /~[0-9a-f]{4}\}\}/.test(last), true);
+  for (let i = 0; i < 80; i += 1) last = runSanitize(`user${i}@example.com`, RULES, localCtx).content;
+  check('序号不超过阈值', /\{\{EMAIL_ADDR_\d{1,2}\}\}/.test(last) || /~[0-9a-f]{4}\}\}/.test(last), true);
   check('超大序号不再出现', /_\d{3,}\}\}/.test(last), false);
 }
 // 修复之间不得互相抢匹配。

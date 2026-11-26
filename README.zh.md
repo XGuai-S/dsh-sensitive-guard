@@ -51,7 +51,6 @@ config:
 | 微信、QQ、社交账号 | `{{SOCIAL_ID}}` |
 | 订单号、流水号 | `{{TRADE_NO}}` |
 | 证书序列号、DN、密钥指纹 | `{{CERT_INFO}}` / `{{KEY_FINGERPRINT}}` |
-| 本地绝对路径 | `{{LOCAL_PATH}}` |
 | IMEI、Android ID、SN | `{{DEVICE_ID}}` |
 | 邮箱 | `{{EMAIL_ADDR}}` |
 | 车牌号 | `{{PLATE_NO}}` |
@@ -109,7 +108,7 @@ storePassword=abcdef123456  →  storePassword={{CRED_CODE}}
 
 ## 规则规模
 
-主规则 **47 条**（BLOCK 34 + MASK 13）+ OCR 规则 **7 条** = **54 条**，占位符 **26 类**。
+主规则 **46 条**（BLOCK 34 + MASK 12）+ OCR 规则 **7 条** = **53 条**，占位符 **26 类**（`path` 常量保留兼容，脱敏规则已移除）。
 完整清单见 [docs/RULES-INVENTORY.md](docs/RULES-INVENTORY.md)
 （逐条判定说明见 [docs/RULES.md](docs/RULES.md)）。
 

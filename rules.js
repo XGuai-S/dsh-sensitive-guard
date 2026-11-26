@@ -815,32 +815,14 @@ const BASE_RULES = [
     keepGroup: 1,
   },
 
-  // ========== 本地路径：MASK ==========
-  {
-    id: 'local-path',
-    level: LEVELS.mask,
-    kind: HIT_KINDS.path,
-    to: PLACEHOLDERS.path,
-    // Windows 盘符、Android 各挂载点、Linux 常见根目录。
-    // Windows drive letters, Android mount points, and Linux root directories.
-    //
-    // 盘符前不能是字母：否则 URL 的 `http://`、`redis://`、`mongodb://`
-    // 会把最后一个字母当成盘符（`p://localhost...`、`b://...`），整段 URL
-    // 被替换成 `{{LOCAL_PATH}}`。这是实测到的真实误报。
-    //
-    // The drive letter must not follow another letter: otherwise the tail of a
-    // URL scheme (`http://`, `redis://`, `mongodb://`) was read as a drive
-    // letter and the whole URL became `{{LOCAL_PATH}}`. Verified false positive.
-    //
-    // Linux 侧必须列出具体前缀而不是笼统的 `/[a-z]+/`，否则会把 URL 路径
-    // 或注释里的斜杠片段一起吃掉。
-    //
-    // The Linux side lists concrete prefixes rather than a generic `/[a-z]+/`;
-    // a wildcard would also consume URL paths and prose fragments.
-    // 另覆盖 Windows UNC `\\server\share` 与用户家目录速写 `~/...`。
-    // Also cover Windows UNC paths and the common home shorthand `~/...`.
-    re: /(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\s"'<>|,;)\]}]+|\\\\[^\s\\/]+\\[^\s"'<>|,;)\]}]+|(?<![A-Za-z0-9])~[\\/][^\s"'<>|,;)\]}]+|\/(?:storage|sdcard|data)\/[^\s"'<>|,;)\]}]*|\/(?:root|home|Users)\/[^\s"'<>|,;)\]}]+|\/(?:etc|var|usr|opt|srv|tmp|mnt|media)\/[^\s"'<>|,;)\]}]+)/g,
-  },
+  // ========== 本地路径：已移除 ==========
+  // local-path 规则被移除：它会把图片附件的文件名（含绝对路径）替换成
+  // {{LOCAL_PATH}}，破坏 DSH 的附件解析，导致图片发送失败。
+  // 路径属于低敏信息，且 DSH 附件元数据必须原样保留，故不再脱敏。
+  // Removed: it mangled image attachment names containing absolute paths
+  // into {{LOCAL_PATH}}, breaking DSH attachment resolution and image sending.
+  //
+  // 相关规则（高熵串）里的“路径片段排除”逻辑保留，避免把路径误判为密钥。
 
   // ========== 设备标识：MASK ==========
   {
@@ -1189,6 +1171,11 @@ export function isHighEntropy(value) {
   if (/[a-z][a-z0-9+.-]*:\/\//i.test(value)) return false;
   // 纯数字/斜杠的长路径（`/a/b/c/...`）是路径而非随机串。
   if (/^\/?~[\\/][\w./~%+-]+$/.test(value)) return false;
+  // 绝对路径（含 local-path 曾覆盖的挂载点）：local-path 移除后，这类路径
+  // 会落到熵兜底里被误判。以 `/` 开头且只含路径字符的一律不算密钥。
+  // Absolute paths used to be caught by local-path; after its removal they
+  // must not fall through to the entropy catch-all.
+  if (/^\/[A-Za-z0-9._~%+-]+(?:[\\/][A-Za-z0-9._~%+-]*)+$/.test(value)) return false;
   // 堆栈帧与文件路径：`node:internal/modules/cjs/loader:1145:15`、
   // `src/utils/helper.ts:12:5` 熵很高，却是报错栈而非密钥。
   // Stack frames and file paths are high-entropy but are not secrets.

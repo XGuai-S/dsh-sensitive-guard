@@ -53,7 +53,23 @@ check('无敏感 level', cleanResult.level, 'PASS');
 section('路径与 IP 脱敏');
 const pathPayload = { content: [{ type: 'text', text: '打开 C:\\Users\\test\\a.js' }] };
 const pathResult = sanitizeArgs(pathPayload, RULES, contextFor());
-check('本地路径替换', pathResult.value.content[0].text.includes('{{LOCAL_PATH}}'), true);
+check('本地路径不再脱敏（local-path 已移除）', pathResult.value.content[0].text.includes('{{LOCAL_PATH}}'), false);
+
+// 图片附件元数据（含绝对路径的文件名）必须原样保留，否则图片发送失败。
+const imagePayload = {
+  content: [{
+    type: 'image',
+    attachment: {
+      attachmentId: 'ad375b3a-855c-9f11-b2ab-be965ecc9a77',
+      mediaType: 'image/png',
+      name: 'C:\\Users\\test\\Pictures\\屏幕截图(1).png',
+      sha256: 'ad375b3a855c9f11b2abbbe965ecc9a772b5acf7d038f7e294d1ab9fcfec9077',
+    },
+  }],
+};
+const imageResult = sanitizeArgs(imagePayload, RULES, contextFor());
+check('图片附件不被改写', imageResult.changed, false);
+check('附件文件名保留原路径', imageResult.value.content[0].attachment.name, imagePayload.content[0].attachment.name);
 
 const ipPayload = { content: [{ type: 'text', text: 'host 192.168.1.5 up' }] };
 const ipResult = sanitizeArgs(ipPayload, RULES, contextFor());

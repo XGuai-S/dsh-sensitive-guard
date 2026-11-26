@@ -48,7 +48,6 @@ therefore changes what downstream sees, without touching deltas already delivere
 | WeChat, QQ, social handles | `{{SOCIAL_ID}}` |
 | order and transaction numbers | `{{TRADE_NO}}` |
 | certificate serials, DNs, key fingerprints | `{{CERT_INFO}}` / `{{KEY_FINGERPRINT}}` |
-| local absolute paths | `{{LOCAL_PATH}}` |
 | IMEI, Android ID, serial numbers | `{{DEVICE_ID}}` |
 | email addresses | `{{EMAIL_ADDR}}` |
 | vehicle plates | `{{PLATE_NO}}` |
@@ -104,8 +103,9 @@ commit hashes, and arithmetic expressions.
 
 ## Rule counts
 
-47 main rules (34 BLOCK + 13 MASK) plus 7 OCR rules = **54 rules**, across **26
-placeholder classes**. The itemised inventory is in
+46 main rules (34 BLOCK + 12 MASK) plus 7 OCR rules = **53 rules**, across **26
+placeholder classes** (the `path` constant is kept for compatibility but the
+path-masking rule was removed). The itemised inventory is in
 [docs/RULES-INVENTORY.md](docs/RULES-INVENTORY.md); the per-rule explanations are in
 [docs/RULES.md](docs/RULES.md).
 

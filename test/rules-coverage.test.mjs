@@ -25,7 +25,7 @@ const rules = buildFullRules(config);
 const freshContext = () => ({ config, disabledRules: config.disabledRulesSet, registry: createRegistry() });
 
 section('规则表完整性');
-check('主规则 47 条', rules.length, 47);
+check('主规则 46 条', rules.length, 46);
 check('OCR 规则 7 条', OCR_RULES.length, 7);
 check('禁用规则集合已预计算', config.disabledRulesSet instanceof Set, true);
 
@@ -76,7 +76,6 @@ const CASES = [
   ['account-balance', '{{BALANCE_AMOUNT}}', '账户余额 1,234,567.89 元'],
   ['cert-info', '{{CERT_INFO}}', '证书序列号: 0A1B2C3D4E5F6071'],
   ['key-fingerprint', '{{KEY_FINGERPRINT}}', 'fingerprint: aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd'],
-  ['local-path', '{{LOCAL_PATH}}', 'C:\\Users\\x\\y.js'],
   ['device-id', '{{DEVICE_ID}}', 'IMEI 861234567890123'],
   ['mac-address', '{{MAC_ADDR}}', 'aa:bb:cc:dd:ee:ff'],
   ['net-ipv6', '{{NET_IP}}', '2001:db8:85a3::8a2e:370:7334'],

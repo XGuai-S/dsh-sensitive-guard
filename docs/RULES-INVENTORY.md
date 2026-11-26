@@ -2,11 +2,11 @@
 
 **自动生成，勿手工编辑。** 由 `node scratch/gen-rules-doc.mjs` 从 `rules.js` 与 `ocr/normalize.js` 枚举得出。
 
-- 版本：**1.7.0**
-- 主规则：**47 条**（BLOCK 34 + MASK 13）
+- 版本：**1.7.1**
+- 主规则：**46 条**（BLOCK 34 + MASK 12）
 - OCR 规则：**7 条**（BLOCK 6 + MASK 1）
-- 合计：**54 条**
-- 占位符：**26 类**
+- 合计：**53 条**
+- 占位符：**26 类**（保留 `path` 常量以兼容，但 `local-path` 规则已移除）
 - 命中类型：**20 种**
 
 ---
@@ -55,13 +55,16 @@
 | 38 | `account-balance` | BLOCK | 资金信息 | `{{BALANCE_AMOUNT}}` |
 | 39 | `cert-info` | MASK | 证书信息 | `{{CERT_INFO}}` |
 | 40 | `key-fingerprint` | MASK | 密钥指纹 | `{{KEY_FINGERPRINT}}` |
-| 41 | `local-path` | MASK | 本地路径 | `{{LOCAL_PATH}}` |
-| 42 | `device-id` | MASK | 设备信息 | `{{DEVICE_ID}}` |
-| 43 | `mac-address` | MASK | MAC地址 | `{{MAC_ADDR}}` |
-| 44 | `net-ipv6` | MASK | 网络地址 | `{{NET_IP}}` |
-| 45 | `lan-ipv4` | MASK | 网络地址 | `{{LAN_IP}}` |
-| 46 | `net-ipv4` | MASK | 网络地址 | `{{NET_IP}}` |
-| 47 | `high-entropy` | BLOCK | 可疑长串 | `{{SECRET_TOKEN}}` |
+| 41 | `device-id` | MASK | 设备信息 | `{{DEVICE_ID}}` |
+| 42 | `mac-address` | MASK | MAC地址 | `{{MAC_ADDR}}` |
+| 43 | `net-ipv6` | MASK | 网络地址 | `{{NET_IP}}` |
+| 44 | `lan-ipv4` | MASK | 网络地址 | `{{LAN_IP}}` |
+| 45 | `net-ipv4` | MASK | 网络地址 | `{{NET_IP}}` |
+| 46 | `high-entropy` | BLOCK | 可疑长串 | `{{SECRET_TOKEN}}` |
+
+> `local-path` 规则已移除（v1.7.1）：它会把图片附件的绝对路径文件名替换成
+> `{{LOCAL_PATH}}`，破坏附件解析导致图片发送失败。`{{LOCAL_PATH}}` 占位符常量
+> 保留仅为兼容，`isHighEntropy` 已加绝对路径排除，避免路径落入熵兜底误报。
 
 **顺序约束**：
 

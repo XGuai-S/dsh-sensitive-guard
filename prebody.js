@@ -130,6 +130,8 @@ export function sanitizeArgs(value, rules, context, depth = 0, key = '') {
   }
 
   if (value !== null && typeof value === 'object') {
+    // 附件容器整体跳过：保留文件名/路径/哈希原样，避免破坏图片附件解析。
+    if (isAttachmentContainer(value, key)) return empty;
     const counts = {};
     const kinds = new Set();
     const hits = [];
@@ -159,6 +161,24 @@ const IDENTIFIER_KEYS = new Set([
   'sessionId', 'requestId', 'rpcId', 'id', 'messageId', 'callId',
   'clientTimeZone', 'mode', 'type', 'kind', 'role', 'source',
 ]);
+
+/**
+ * 附件元数据子树不做文本脱敏 / attachment metadata is never text-masked.
+ *
+ * 原因：`attachment.name` 常含图片的绝对路径（如 `C:\...\屏幕截图.png`），
+ * 一旦被 local-path / 其它规则改写，DSH 就无法按原文件名解析附件，
+ * 结果就是图片发送失败。附件的身份与定位字段必须原样透传。
+ * Attachment names often carry absolute paths; rewriting them breaks DSH's
+ * attachment resolution and makes image sending fail. Pass them through.
+ */
+function isAttachmentContainer(value, key) {
+  if (key === 'attachment' || key === 'attachments') return true;
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    // 图片块本身：有 type=image 且带 attachment
+    if (value.type === 'image' && 'attachment' in value) return true;
+  }
+  return false;
+}
 
 /**
  * 拦截一个已解析的 RPC payload / Intercept one parsed RPC payload.

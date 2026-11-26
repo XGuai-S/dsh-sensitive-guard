@@ -3,8 +3,8 @@
 本文件由代码枚举生成，与 `rules.js`、`ocr/normalize.js` 保持一致。
 Generated from the code; kept in step with `rules.js` and `ocr/normalize.js`.
 
-**统计**（由代码枚举，v1.6.3）：主规则 **47 条**（BLOCK 34 + MASK 13）+ OCR 规则 **7 条** = **54 条**，占位符 **26 类**，命中类型 20 种。
-**Totals** (enumerated from code, v1.6.3): 47 main rules (34 BLOCK + 13 MASK), 7 OCR rules, 26 placeholder classes, 20 hit kinds.
+**统计**（由代码枚举，v1.7.1）：主规则 **46 条**（BLOCK 34 + MASK 12）+ OCR 规则 **7 条** = **53 条**，占位符 **26 类**（`path` 常量保留兼容，`local-path` 规则已移除），命中类型 20 种。
+**Totals** (enumerated from code, v1.7.1): 46 main rules (34 BLOCK + 12 MASK), 7 OCR rules, 26 placeholder classes (`path` constant kept, `local-path` rule removed), 20 hit kinds.
 
 > **本文件的所有数字都由 `scratch/gen-rules-doc.mjs` 从代码导出后写入，不手工维护。** 历史上出现过多次文档与实际不符（规则数、占位符数、中英文数字互相矛盾），因此清单以代码为唯一事实来源。
 >
@@ -140,8 +140,7 @@ exactly once.
 | 36 | `trade-no` | 交易号 | `{{TRADE_NO}}` | 订单号/流水号/交易号/order/transaction/payment + ≥8 位（键名允许 `_` `.` `-`） |
 | 37 | `cert-info` | 证书信息 | `{{CERT_INFO}}` | 证书序列号、serial、subject、DN、证书主题 |
 | 38 | `key-fingerprint` | 密钥指纹 | `{{KEY_FINGERPRINT}}` | **必须带标签**（fingerprint/指纹）+ 冒号十六进制、40 位、64 位 |
-| 39 | `local-path` | 本地路径 | `{{LOCAL_PATH}}` | Windows 盘符；`/storage` `/sdcard` `/data` `/root` `/home` `/Users`；`/etc` `/var` `/usr` `/opt` `/srv` `/tmp` `/mnt` `/media` |
-| 40 | `device-id` | 设备信息 | `{{DEVICE_ID}}` | UUID、16 位十六进制序列号、15 位 IMEI（Luhn 通过的 15 位让给银行卡） |
+| 39 | `device-id` | 设备信息 | `{{DEVICE_ID}}` | UUID、16 位十六进制序列号、15 位 IMEI（Luhn 通过的 15 位让给银行卡） |
 | 41 | `mac-address` | MAC地址 | `{{MAC_ADDR}}` | `aa:bb:cc:dd:ee:ff` 或 `aa-bb-cc-dd-ee-ff` |
 | 42 | `net-ipv6` | 网络地址 | **动态** | 标准 IPv6；ULA（`fc00::/7`）→ `{{LAN_IP}}`，其余 → `{{NET_IP}}` |
 | 43 | `lan-ipv4` | 网络地址 | `{{LAN_IP}}` | `10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16` |
@@ -287,7 +286,7 @@ exactly once.
    ├─ 2. 分片（>4096 字符时）
    │     先在完整文本上探测，确认有命中才逐片替换
    │
-   ├─ 3. 逐条规则匹配（47 条，按优先级顺序）
+   ├─ 3. 逐条规则匹配（46 条，按优先级顺序）
    │     ├─ 已含 {{ 的匹配 → 跳过（防二次替换）
    │     ├─ rule.validate 不通过 → 跳过
    │     ├─ 白名单判定取值 → 跳过
