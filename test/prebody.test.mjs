@@ -127,5 +127,18 @@ interceptPayload('session/prompt', { content: [{ type: 'text', text: 'hello' }] 
 check('诊断有输出', logs.length > 0, true);
 check('诊断含端点', logs.some((line) => line.includes('session/prompt')), true);
 
+section('工具结果递归脱敏（文件内容经工具读取的场景）');
+const fileText = '手机号13800138000 身份证441202199506081427';
+// 纯字符串数组
+const strArr = ['读取文件:', fileText];
+const strArrResult = sanitizeArgs(strArr, RULES, contextFor());
+check('字符串数组工具结果脱敏', strArrResult.changed, true);
+check('字符串数组无明文', JSON.stringify(strArrResult.value).includes('13800138000'), false);
+// 含字符串字段的对象
+const objResult = { content: fileText, meta: 'ok' };
+const objOutcome = sanitizeArgs(objResult, RULES, contextFor());
+check('对象工具结果脱敏', objOutcome.changed, true);
+check('对象结果无明文', JSON.stringify(objOutcome.value).includes('13800138000'), false);
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exitCode = failures === 0 ? 0 : 1;

@@ -407,15 +407,19 @@ export function apply(ctx, rawConfig) {
       const totals = new ResultAccumulator();
       let nextDecision = decision;
 
-      if (Array.isArray(decision.content)) {
-        const result = scanContent(decision.content, rules, context);
+      // 用 sanitizeArgs 递归处理：工具结果可能是 text block 数组、纯字符串数组、
+      // 或含字符串字段的对象。scanContent 只认 type=text 的块，会漏掉后两种，
+      // 导致文件内容（明文）从 tools/post-execute 流入模型与中转。
+      // sanitizeArgs 会跳过 attachment/image 容器与标识符字段，安全。
+      if (decision.content !== undefined) {
+        const result = sanitizeArgs(decision.content, rules, context);
         totals.add(result);
-        if (result.content !== decision.content) nextDecision = { ...nextDecision, content: result.content };
+        if (result.changed) nextDecision = { ...nextDecision, content: result.value };
       }
       if (decision.value !== undefined && nextDecision.content === undefined) {
-        const result = scanValue(decision.value, rules, context);
+        const result = sanitizeArgs(decision.value, rules, context);
         totals.add(result);
-        if (result.value !== decision.value) nextDecision = { ...nextDecision, value: result.value };
+        if (result.changed) nextDecision = { ...nextDecision, value: result.value };
       }
 
       if (!totals.matched) return decision;
