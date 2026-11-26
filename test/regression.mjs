@@ -118,6 +118,10 @@ check('Windows 路径', scan('C:\\Users\\x\\y.js').level, 'PASS');
 check('Android storage', scan('/storage/emulated/0/a.jpg').level, 'PASS');
 check('Android sdcard', scan('/sdcard/Download/a.txt').level, 'PASS');
 check('Linux root', scan('/root/.ssh/id_rsa').level, 'PASS');
+// 长 Windows 路径高字符多样性，熵 >= 3.0，不能被 high-entropy 误判成密钥。
+check('长 Windows 盘符路径不误判', scan('C:\\Users\\XGuai-S\\Downloads\\a').level, 'PASS');
+check('Windows Program Files 路径不误判', scan('C:\\Program Files\\SomeApp\\bin').level, 'PASS');
+check('UNC 路径不误判', scan('\\\\server\\share\\folder\\sub').level, 'PASS');
 
 section('PASS：白名单与无敏感');
 check('回环保留', scan('127.0.0.1').level, 'PASS');

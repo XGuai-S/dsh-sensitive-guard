@@ -16,6 +16,19 @@
 
 ## [Unreleased]
 
+## [1.7.11] - 2026-11-26
+
+修复长 Windows 路径被误判为高熵密钥。
+
+### 修正
+
+- **high-entropy 误伤 Windows 路径**。`isHighEntropy` 的路径排除只覆盖 Unix 风格
+  （以 `/` 开头），漏了盘符路径与 UNC 路径。实测 `C:\Users\XGuai-S\Downloads\a`
+  （熵 4.11）、`C:\Program Files\SomeApp\bin`（4.21）被整段替换成
+  `{{SECRET_TOKEN}}`。补上 `^[A-Za-z]:[\\/]` 与 `^\\\\` 两条排除。
+- 真实高熵密钥仍被拦（`aB3xY9...` 等混合随机串），只排除路径形状。
+- 新增 3 条长路径回归用例。
+
 ## [1.7.10] - 2026-11-26
 
 裸银行卡号不再要求 Luhn 校验。

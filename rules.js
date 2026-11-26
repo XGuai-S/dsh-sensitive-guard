@@ -1205,6 +1205,13 @@ export function isHighEntropy(value) {
   // Absolute paths used to be caught by local-path; after its removal they
   // must not fall through to the entropy catch-all.
   if (/^\/[A-Za-z0-9._~%+-]+(?:[\\/][A-Za-z0-9._~%+-]*)+$/.test(value)) return false;
+  // Windows 绝对路径（盘符 `C:\...` 或 UNC `\\server\share\...`）：local-path 移除后
+  // 这类路径会落到熵兜底被误判。之前只排除了 Unix 风格（以 `/` 开头），漏了反斜杠
+  // 路径——实测 `C:\Users\XGuai-S\Downloads\a` 熵 4.1 被替换成 {{SECRET_TOKEN}}。
+  // Windows paths (drive or UNC) must not fall through to the entropy catch-all;
+  // only Unix-style leading-slash paths were excluded before.
+  if (/^[A-Za-z]:[\\/][^<>:"|?*\r\n]+$/.test(value)) return false;
+  if (/^\\\\[^<>:"|?*\r\n]+$/.test(value)) return false;
   // 堆栈帧与文件路径：`node:internal/modules/cjs/loader:1145:15`、
   // `src/utils/helper.ts:12:5` 熵很高，却是报错栈而非密钥。
   // Stack frames and file paths are high-entropy but are not secrets.
