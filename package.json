@@ -1,73 +1,73 @@
-﻿{
-    "name":  "dsh-sensitive-guard",
-    "version":  "1.7.0",
-    "description":  "Pre-gateway sensitive content guard for DeepSeek Harness. Intercepts the session/prompt HTTP body before it reaches the inbox, so plaintext never lands in inbox or session. Three-level classification cleans and continues instead of aborting; only bypass-attack instructions are refused. Dual-direction, chunked and recursive scanning, structured logs, image OCR and QR.",
-    "type":  "module",
-    "license":  "MIT",
-    "author":  "XGuai-S",
-    "homepage":  "https://github.com/XGuai-S/dsh-sensitive-guard#readme",
-    "repository":  {
-                       "type":  "git",
-                       "url":  "git+https://github.com/XGuai-S/dsh-sensitive-guard.git"
-                   },
-    "bugs":  {
-                 "url":  "https://github.com/XGuai-S/dsh-sensitive-guard/issues"
-             },
-    "exports":  {
-                    ".":  "./index.js",
-                    "./locale/*.json":  "./locale/*.json",
-                    "./icon":  "./icon.svg",
-                    "./selfcheck":  "./ocr/selfcheck.mjs"
-                },
-    "files":  [
-                  "index.js",
-                  "rules.js",
-                  "masking.js",
-                  "prebody.js",
-                  "response.js",
-                  "bypass.js",
-                  "session-state.js",
-                  "accumulator.js",
-                  "logger.js",
-                  "image-pipeline.js",
-                  "ocr",
-                  "scripts",
-                  "cordis.patch.yml",
-                  "locale/*.json",
-                  "docs",
-                  "test",
-                  "icon.svg",
-                  "README.md",
-                  "README.zh.md",
-                  "README.en.md",
-                  "LICENSE",
-                  "CHANGELOG.md"
-              ],
-    "keywords":  [
-                     "dsh-plugin",
-                     "dsh",
-                     "deepseek-harness",
-                     "security",
-                     "redaction",
-                     "dlp",
-                     "ocr",
-                     "pii",
-                     "secrets"
-                 ],
-    "engines":  {
-                    "node":  "\u003e=20"
-                },
-    "scripts":  {
-                    "test":  "node test/regression.mjs \u0026\u0026 node test/prebody.test.mjs \u0026\u0026 node test/architecture.test.mjs \u0026\u0026 node test/rules-coverage.test.mjs",
-                    "selfcheck":  "node ocr/selfcheck.mjs",
-                    "scrub":  "node scripts/scrub-session.mjs"
-                },
-    "dsh":  {
-                "bundle":  {
-                               "patch":  "./cordis.patch.yml"
-                           }
-            },
-    "dependencies":  {
-                         "jsqr":  "^1.4.0"
-                     }
+{
+  "name": "dsh-sensitive-guard",
+  "version": "1.7.0",
+  "description": "Pre-gateway sensitive content guard for DeepSeek Harness. Intercepts the session/prompt HTTP body before it reaches the inbox, so plaintext never lands in inbox or session. Three-level classification cleans and continues instead of aborting; only bypass-attack instructions are refused. Dual-direction, chunked and recursive scanning, structured logs, image OCR and QR.",
+  "type": "module",
+  "license": "MIT",
+  "author": "XGuai-S",
+  "homepage": "https://github.com/XGuai-S/dsh-sensitive-guard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/XGuai-S/dsh-sensitive-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/XGuai-S/dsh-sensitive-guard/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./selfcheck": "./ocr/selfcheck.mjs"
+  },
+  "files": [
+    "index.js",
+    "rules.js",
+    "masking.js",
+    "prebody.js",
+    "response.js",
+    "bypass.js",
+    "session-state.js",
+    "accumulator.js",
+    "logger.js",
+    "image-pipeline.js",
+    "ocr",
+    "scripts",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "test",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "README.en.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "security",
+    "redaction",
+    "dlp",
+    "ocr",
+    "pii",
+    "secrets"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/regression.mjs && node test/prebody.test.mjs && node test/architecture.test.mjs && node test/rules-coverage.test.mjs",
+    "selfcheck": "node ocr/selfcheck.mjs",
+    "scrub": "node scripts/scrub-session.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "jsqr": "^1.4.0"
+  }
 }
