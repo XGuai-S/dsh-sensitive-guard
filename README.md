@@ -34,9 +34,6 @@ dsh plugin --profile web add <本目录绝对路径 / /absolute/path/to/this/dir
 带一键复制按钮的完整命令页：[`market/install.html`](market/install.html)。
 Agent 方式：调用 `plugin_manager`，`action: install_bundle`，`target: 本目录绝对路径`。
 
-> ⚠️ 不要用 `dsh plugin ... add dsh-sensitive-guard`：npm 上的这个包名已被他人占用（另一个插件），
-> 会装错。请用上面的 GitHub / 本地目录方式，或改名后再发布 npm。
-
 ## 能力概览 / Capabilities
 
 | 能力 Capability | 状态 Status |
