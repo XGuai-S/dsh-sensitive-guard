@@ -7,7 +7,7 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 const HOME = process.env.DSH_HOME || homedir();
 const STORE_ROOT = join(HOME, 'sensitive-guard', 'restore');
 /** 落盘失败时的退回目录（沙箱环境 .dsh 不可写时用临时目录）。 */
