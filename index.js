@@ -128,7 +128,8 @@ export function resolveConfig(raw) {
     maskSubagentReturns: config.maskSubagentReturns !== false,
     auditRequests: config.auditRequests !== false,
     // 可逆脱敏：默认关闭，开启后占位符→原文映射 0600 落盘，可经工具还原。
-    reversible: config.reversible === true || config.reversible === 'true',
+    // 可逆脱敏：默认开启（用户选用方案 B）。YAML 字符串与布尔都接受。
+    reversible: config.reversible !== false && config.reversible !== 'false',
 
     // --- 规则开关 / rule switches ---
     maskUrls: config.maskUrls === true || config.maskUrls === 'all' ? 'all' : config.maskUrls === 'internal' ? 'internal' : false,
@@ -180,6 +181,14 @@ export function resolveConfig(raw) {
  */
 export function apply(ctx, rawConfig) {
   const config = resolveConfig(rawConfig);
+  try {
+    writeFileSync('C:/Users/XGuai-S/Downloads/a/dsh-sensitive-guard/apply-diag.json', JSON.stringify({
+      rawReversible: rawConfig?.reversible,
+      rawKeys: Object.keys(rawConfig || {}).slice(0, 30),
+      configReversible: config.reversible,
+      ts: new Date().toISOString(),
+    }, null, 2));
+  } catch {}
   if (!config.enabled) return;
 
   // 全局永久白名单并入配置白名单。
