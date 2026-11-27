@@ -3,19 +3,27 @@
       name: 'dsh-sensitive-guard'
       config:
         enabled: true
-        # 闁荤姴顑呴崯鎶芥儊椤栫偛绫嶅ù锝囨櫕閻斿懘鏌ㄥ☉娆樺姉rue 闂佸搫鍟崕濂告倻閿旇姤浜ら柛銉戝啫浼庨梻渚囧枔閸斿秹藟閸涱劶鍦偓锝呭缁€澶娒归悩鍙夊櫧闁轰降鍊栫粋宥嗘償閵堝洦顔嶉柣?        bypassSanitize: false
-        # 濠电儑绲介崲鏌ュ箖鎼淬劌妫橀柛銉ｅ妽閹烽亶鏌ㄥ☉娆樺姉rue 闂佸搫鍟冲▔娑溿亹瑜嶉妴鎺楀川鐎涙褰戦梺杞扮缁绘垿宕濋崨瀛樺亱闁搞儺鐓堥崬浠嬫煥濞戞澧曠紓宥咁儔瀹曟粌顓兼径灞界闁荤姳闄嶉崐鏇㈠礄閿熺姴绠板璺侯儑椤忓憡绻涢崣澶樻當闁汇倕瀚伴幃宕囨暜椤斿墽顦?        partialBlock: false
-        # HTTP 闂佸憡鎸哥粔鍫曟偪閸℃稑绠柨鏃囨閻掑鏌ㄥ☉娆掑婵犫偓椤忓牆鍙婇幖娣灪閻庮噣寮堕埡鍌溾槈闁?inbox 婵炴垶鏌ㄩ鍛櫠閻樿缁╅柣鐔告緲閺呮悂鎮归崶顒佹暠闁活亞澧楅幏鍛村箻閹典礁浜?        # 闁哄鏅滈悷锕€危閹间礁鑸规い鏍ㄧ懅椤忛亶鏌ら崗鍛煓婵☆垰妫楅～銏ゅ閳╁喚娼犻梺鍝勫€稿ú鈺冩崲?inbox 闂佹眹鍔岀€氼亞绱為崨顖滅＞妞ゆ洖妫涚粈澶婎熆閹壆绨块悷娆欑畵瀹曪繝鎼归锝嗘緬闁荤偞绋戠悮顐﹀焵?        interceptPromptBody: true
-        # 闁荤姴娲ら敃銉╁蓟閸ヮ剚鏅慨妯诲墯閸炲墎鎲搁悧鍫熺闁伙腹鍓濈粙澶愵敂閸曨偆鍘掗柡?connection/request 闂佹眹鍔岀€氼垶顢氶鈧晥闁稿矉濡囩粈澶岀棯椤撗冩灕妞ゆ挾绮€靛ジ鎮╅搹鍦倳闂備緡鍋呭畝鍛婄?        diagnoseTransport: true
+        # 调试旁路：true 时跳过全部检测，仅用于调试
+        bypassSanitize: false
+        # 混合文本：true 时只清除敏感片段（当前默认已按清洗实现）
+        partialBlock: false
+        # HTTP 前置拦截：在明文进入 inbox 之前改写请求体。
+        # 这是唯一能阻止明文进 inbox 的位置，失败即放行。
+        interceptPromptBody: true
+        # 诊断：记录每个到达 connection/request 的请求，确认传输通道
+        diagnoseTransport: true
         blockBypass: true
-        # 闂佸憡鐟ラ懟顖炲箖濠婂牆绠ユい鎰剁到娴?
+
+        # 双向扫描
         maskUserMessages: true
         maskToolResults: true
         maskResponses: false
-        reversible: true
         maskSubagentReturns: true
         auditRequests: true
-        # 闁荤姴娲ゅΛ妤呭春閸℃鍤曢柍褜鍓熷畷?
+        # 可逆脱敏：占位符→原文 0600 落盘本机
+        reversible: true
+
+        # 识别开关
         detectHighEntropy: false
         detectAddresses: true
         detectMedical: true
@@ -25,13 +33,18 @@
         markBinary: true
         maskDbCredentials: true
         maskPublicKeys: false
-        # URL 闂佸憡甯掑Λ娑欘殽閸ヮ剚鏅慨婵堝毎lse | internal | all
+
+        # URL 分级：false | internal | all
         maskUrls: false
-        # 闂佸搫鍟ㄩ崕杈╂崲閺冣偓缁嬪鎯旈埄鍐ㄦ殘闁荤姭鍋?        logMasks: true
+
+        # 日志与告警
+        logMasks: true
         logFormat: json
         highRiskAlertAfter: 6
         perSessionStats: true
-        # 闂佹悶鍎辨晶鑺ユ櫠?        maxImagesPerTurn: 3
+
+        # 图片
+        maxImagesPerTurn: 3
         ocr: true
         ocrMode: local
         imageBackend: auto
@@ -43,5 +56,8 @@
         redactColor: '#000000'
         compressImages: true
         compressMaxDimension: 2048
-        # 婵炴潙鍚嬫穱娲儊閼恒儳鈻旈悗娑櫳戦ˇ褔鏌ｈ濡嫰骞冮弴銏犵闁哄浂浜炵粈鍕偣閸ヨ泛鐏犻柛銊ょ矙瀹曟﹢宕ㄩ褍鏅ｉ梺鎸庣☉閼活垳绱炵€ｎ喖绀堢€广儱瀚粣妤呮偣閸ャ劎绠戠紒妤€顦靛畷妯侯吋閸繂顫撻梺杞扮妤犲繒妲?        sessionWhitelist: []
-        # 闂佺绻堥崝宀勬儑椤掆偓椤繈姊归幇顔炬毌闂佽皫鍡橆棄闁诡喗娲熷畷?        globalWhitelist: []
+
+        # 会话临时白名单（误判内容，当前会话不再脱敏）
+        sessionWhitelist: []
+        # 全局永久白名单
+        globalWhitelist: []

@@ -180,14 +180,6 @@ export function resolveConfig(raw) {
  */
 export function apply(ctx, rawConfig) {
   const config = resolveConfig(rawConfig);
-  try {
-    writeFileSync('C:/Users/XGuai-S/Downloads/a/dsh-sensitive-guard/apply-diag.json', JSON.stringify({
-      rawReversible: rawConfig?.reversible,
-      rawKeys: Object.keys(rawConfig || {}).slice(0, 30),
-      configReversible: config.reversible,
-      ts: new Date().toISOString(),
-    }, null, 2));
-  } catch {}
   if (!config.enabled) return;
 
   // 全局永久白名单并入配置白名单。
