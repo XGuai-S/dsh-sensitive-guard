@@ -67,12 +67,12 @@
       },
       "versions": [
         {
-          "version": "1.7.13",
-          "publishTimestamp": 1795702677,
+          "version": "1.7.14",
+          "publishTimestamp": 1795799983,
           "source": {
             "type": "git",
             "url": "https://github.com/XGuai-S/dsh-sensitive-guard",
-            "commit": "711d175ada0a87a7cc90508420ed8c52363d2a29"
+            "commit": "8e1d40cbbb372095308b24c6f99e65652e73805f"
           },
           "engines": {
             "dsh": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.2 || >=0.2.2-rc.5 <0.2.3 || >=0.2.3 <0.4.0"

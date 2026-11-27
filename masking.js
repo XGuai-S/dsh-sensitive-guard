@@ -258,6 +258,9 @@ function scanChunk(text, rules, context) {
       const target = typeof rule.toFor === 'function' ? rule.toFor(whole) : rule.to;
       const placeholder = context.registry.placeholderFor(target, value);
 
+      // 可逆脱敏：仅当开关开启时记录 占位符→原文（0600 落盘，原文只存本机）。
+      if (context.restoreStore) context.restoreStore.record(placeholder, value);
+
       counts[placeholder] = (counts[placeholder] ?? 0) + 1;
       kinds.add(rule.kind ?? '其他');
       hits.push({

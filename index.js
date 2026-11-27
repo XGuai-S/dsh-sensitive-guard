@@ -33,6 +33,7 @@ import { probeOcr } from './ocr/runner.js';
 import { OCR_RULES } from './ocr/normalize.js';
 import { privacyRules, NAME_ID_PAIR_RULE } from './ocr/detect.js';
 import { maskResponseStream, maskBase64Payloads } from './response.js';
+import { createRestoreStore, writeRestoreFile } from './restore-store.js';
 import {
   interceptPayload, interceptPromptBody, replaceRequestBody,
   isPromptEnvelope, isPromptEndpoint, sanitizeArgs, sanitizeWithAttachments,
@@ -125,6 +126,8 @@ export function resolveConfig(raw) {
     maskResponses: config.maskResponses === true,
     maskSubagentReturns: config.maskSubagentReturns !== false,
     auditRequests: config.auditRequests !== false,
+    // 可逆脱敏：默认关闭，开启后占位符→原文映射 0600 落盘，可经工具还原。
+    reversible: config.reversible === true,
 
     // --- 规则开关 / rule switches ---
     maskUrls: config.maskUrls === true || config.maskUrls === 'all' ? 'all' : config.maskUrls === 'internal' ? 'internal' : false,
@@ -188,7 +191,13 @@ export function apply(ctx, rawConfig) {
   const ocrRules = OCR_RULES.filter((rule) => !config.disabledRulesSet.has(rule.id));
   const state = new SessionState(config);
   const logger = new GuardLogger(config, ctx.logger);
-  const contextFor = (sessionId) => state.contextFor(sessionId, rules);
+  const contextFor = (sessionId) => ({
+    config,
+    disabledRules: config.disabledRulesSet,
+    registry: createRegistry(),
+    restoreStore: config.reversible ? createRestoreStore(sessionId) : undefined,
+    sessionId,
+  });
 
   /** 把一次扫描结果记入日志并按需告警 / Log one result and alert when due. */
   const publish = (result, source, rawText) => {

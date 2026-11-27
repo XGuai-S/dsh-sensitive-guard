@@ -3,20 +3,20 @@
       name: 'dsh-sensitive-guard'
       config:
         enabled: true
-        # 閻犲鍟抽惁顖炲籍娴ｇ晫鐔呴柨娑欘劗rue 闁哄啯鍎奸悜锔芥交閸パ冨伎闂侇喓鍔嶉ˉ鍛圭€ｅ墎绀夊ù鐘叉噽閺併倖绂嶆惔銈囨閻?        bypassSanitize: false
-        # 婵烇絽鍢查幃搴ㄥ棘閸ャ劍鎷遍柨娑欘劗rue 闁哄啳娉涜ぐ褍銆掗崨瀛樼彑闁轰礁绻戦崝鍛存偋閸ヮ煈鍞介柨娑樼墕缂嶅宕滃澶屽笡閻犱降鍊曢崙锟犲箰婢跺顏告繛鍙夘殔閻ゅ嫰鎮崇敮顔剧
-        partialBlock: false
-        # HTTP 闁告挸绉堕悿鍡涘箯閿旇棄鐒婚柨娑欒壘濠€顏堝及鎼淬垺鐎弶鈺傜☉閸?inbox 濞戞柨顑呮晶鐘诲绩閻熸澘鏅搁悹鍥敱閻増鎷呴幘鎵佸亾?        # 閺夆晜鐟﹀Σ鎼佸船椤栨瑧顏遍柤鍏呯矙濡棗顫㈤姀鈩冾潠闁哄倸娲╃换?inbox 闁汇劌瀚紞鍛磾椤曞棛绀夊鎯扮簿鐟欙箓宕￠搹顐ｆ澒閻炴稑琚埀?        interceptPromptBody: true
-        # 閻犲洤锕ラ弻鍥晬濮樻剚鍞剁憸鐗堟礃閻︹剝绋夐鍕厒閺?connection/request 闁汇劌瀚顒€效閸岋妇绀夌痪顓у枦椤撶粯瀵奸悩铏圭炕闂侇偅宀告禍?        diagnoseTransport: true
+        # 闁荤姴顑呴崯鎶芥儊椤栫偛绫嶅ù锝囨櫕閻斿懘鏌ㄥ☉娆樺姉rue 闂佸搫鍟崕濂告倻閿旇姤浜ら柛銉戝啫浼庨梻渚囧枔閸斿秹藟閸涱劶鍦偓锝呭缁€澶娒归悩鍙夊櫧闁轰降鍊栫粋宥嗘償閵堝洦顔嶉柣?        bypassSanitize: false
+        # 濠电儑绲介崲鏌ュ箖鎼淬劌妫橀柛銉ｅ妽閹烽亶鏌ㄥ☉娆樺姉rue 闂佸搫鍟冲▔娑溿亹瑜嶉妴鎺楀川鐎涙褰戦梺杞扮缁绘垿宕濋崨瀛樺亱闁搞儺鐓堥崬浠嬫煥濞戞澧曠紓宥咁儔瀹曟粌顓兼径灞界闁荤姳闄嶉崐鏇㈠礄閿熺姴绠板璺侯儑椤忓憡绻涢崣澶樻當闁汇倕瀚伴幃宕囨暜椤斿墽顦?        partialBlock: false
+        # HTTP 闂佸憡鎸哥粔鍫曟偪閸℃稑绠柨鏃囨閻掑鏌ㄥ☉娆掑婵犫偓椤忓牆鍙婇幖娣灪閻庮噣寮堕埡鍌溾槈闁?inbox 婵炴垶鏌ㄩ鍛櫠閻樿缁╅柣鐔告緲閺呮悂鎮归崶顒佹暠闁活亞澧楅幏鍛村箻閹典礁浜?        # 闁哄鏅滈悷锕€危閹间礁鑸规い鏍ㄧ懅椤忛亶鏌ら崗鍛煓婵☆垰妫楅～銏ゅ閳╁喚娼犻梺鍝勫€稿ú鈺冩崲?inbox 闂佹眹鍔岀€氼亞绱為崨顖滅＞妞ゆ洖妫涚粈澶婎熆閹壆绨块悷娆欑畵瀹曪繝鎼归锝嗘緬闁荤偞绋戠悮顐﹀焵?        interceptPromptBody: true
+        # 闁荤姴娲ら敃銉╁蓟閸ヮ剚鏅慨妯诲墯閸炲墎鎲搁悧鍫熺闁伙腹鍓濈粙澶愵敂閸曨偆鍘掗柡?connection/request 闂佹眹鍔岀€氼垶顢氶鈧晥闁稿矉濡囩粈澶岀棯椤撗冩灕妞ゆ挾绮€靛ジ鎮╅搹鍦倳闂備緡鍋呭畝鍛婄?        diagnoseTransport: true
         blockBypass: true
 
-        # 闁告瑥鑻幃婊堝箥椤愶絽浼?        maskUserMessages: true
+        # 闂佸憡鐟ラ懟顖炲箖濠婂牆绠ユい鎰剁到娴?        maskUserMessages: true
         maskToolResults: true
         maskResponses: false
+        reversible: true
         maskSubagentReturns: true
         auditRequests: true
 
-        # 閻犲洤妫楅崺鍡楊嚕閳ь剟宕?        detectHighEntropy: false
+        # 闁荤姴娲ゅΛ妤呭春閸℃鍤曢柍褜鍓熷畷?        detectHighEntropy: false
         detectAddresses: true
         detectMedical: true
         detectQr: true
@@ -26,15 +26,15 @@
         maskDbCredentials: true
         maskPublicKeys: false
 
-        # URL 闁告帒妫涙鍥晬濮濈嚰lse | internal | all
+        # URL 闂佸憡甯掑Λ娑欘殽閸ヮ剚鏅慨婵堝毎lse | internal | all
         maskUrls: false
 
-        # 闁哄啨鍎辩换鏃€绋夋惔鈩冨暈閻犫偓?        logMasks: true
+        # 闂佸搫鍟ㄩ崕杈╂崲閺冣偓缁嬪鎯旈埄鍐ㄦ殘闁荤姭鍋?        logMasks: true
         logFormat: json
         highRiskAlertAfter: 6
         perSessionStats: true
 
-        # 闁搞儱澧芥晶?        maxImagesPerTurn: 3
+        # 闂佹悶鍎辨晶鑺ユ櫠?        maxImagesPerTurn: 3
         ocr: true
         ocrMode: local
         imageBackend: auto
@@ -47,5 +47,5 @@
         compressImages: true
         compressMaxDimension: 2048
 
-        # 濞村吋淇洪惁鑺ョ▔鐎涙ɑ顦ч柣褑妫勯幃鏇㈠础閺囶亞绀勯悹鍥跺灠閸ㄤ粙宕橀崨顓у晣闁挎稑鑻紞瀣礈瀹ュ嫮绐楅悹鍥ㄧ箑缁楀宕樺鍫濆闁轰礁楠忕槐?        sessionWhitelist: []
-        # 闁稿繈鍔岄惇顒€顫濋梹鎰暯闁谎嗘閹洟宕?        globalWhitelist: []
+        # 婵炴潙鍚嬫穱娲儊閼恒儳鈻旈悗娑櫳戦ˇ褔鏌ｈ濡嫰骞冮弴銏犵闁哄浂浜炵粈鍕偣閸ヨ泛鐏犻柛銊ょ矙瀹曟﹢宕ㄩ褍鏅ｉ梺鎸庣☉閼活垳绱炵€ｎ喖绀堢€广儱瀚粣妤呮偣閸ャ劎绠戠紒妤€顦靛畷妯侯吋閸繂顫撻梺杞扮妤犲繒妲?        sessionWhitelist: []
+        # 闂佺绻堥崝宀勬儑椤掆偓椤繈姊归幇顔炬毌闂佽皫鍡橆棄闁诡喗娲熷畷?        globalWhitelist: []
