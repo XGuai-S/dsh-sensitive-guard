@@ -34,6 +34,7 @@ import { OCR_RULES } from './ocr/normalize.js';
 import { privacyRules, NAME_ID_PAIR_RULE } from './ocr/detect.js';
 import { maskResponseStream, maskBase64Payloads } from './response.js';
 import { createRestoreStore, writeRestoreFile } from './restore-store.js';
+import { createRequire } from 'node:module';
 import {
   interceptPayload, interceptPromptBody, replaceRequestBody,
   isPromptEnvelope, isPromptEndpoint, sanitizeArgs, sanitizeWithAttachments,
@@ -501,6 +502,47 @@ export function apply(ctx, rawConfig) {
       // 回传扫描失败不得影响子代理结果。
     }
   });
+
+  // ==================== 5. 可逆还原工具（reversible=true）====================
+  if (config.reversible) {
+    const dshRequire = createRequire(process.env.DSH_INSTALL_DIR ? process.env.DSH_INSTALL_DIR + '/index.js' : import.meta.url);
+    Promise.resolve().then(() => dshRequire('@deepseek-ai/dsh-tools')).then(({ defineTool }) => {
+      try {
+        const tool = defineTool({
+          name: 'sensitive_guard_restore',
+          description: '把脱敏占位符还原为真实值，写入本机 0600 文件并返回路径。用于编辑/编译时获取被遮蔽的原始内容。',
+          parameters: {
+            placeholders: { type: 'array', items: { type: 'string' }, required: true, description: '占位符列表' },
+            format: { type: 'string', description: 'text 或 json' },
+          },
+          output: {
+            schema: { type: 'string' },
+            render: (_args, value) => [{ type: 'text', text: value }],
+          },
+          async execute(args, exec) {
+            const sessionId = exec?.agent?.id ?? 'default';
+            const store = createRestoreStore(sessionId);
+            const restored = store.restore(args.placeholders ?? []);
+            const entries = Object.entries(restored);
+            const rendered = args.format === 'json' ? JSON.stringify(restored, null, 2)
+              : entries.map(([p, v]) => `${p} = ${v}`).join('\n');
+            const file = writeRestoreFile(rendered, sessionId);
+            return `已还原 ${entries.length} 个占位符，文件(0600): ${file}`;
+          },
+        });
+        const dispose = ctx.tools.register(tool);
+        ctx.effect(() => () => { try { dispose?.(); } catch {} }, 'sensitive-guard: restore tool');
+        try { writeFileSync('C:/Users/XGuai-S/Downloads/a/dsh-sensitive-guard/tool-register-status.json', JSON.stringify({ ok: true, ts: new Date().toISOString() })); } catch {}
+        logger.info('✅ 可逆还原工具已注册 sensitive_guard_restore');
+      } catch (error) {
+        try { writeFileSync('C:/Users/XGuai-S/Downloads/a/dsh-sensitive-guard/tool-register-status.json', JSON.stringify({ ok: false, why: 'register', msg: String(error?.message ?? error) })); } catch {}
+      logger.warn('可逆还原工具注册失败: ' + (error?.message ?? 'unknown'));
+      }
+    }).catch((error) => {
+      try { writeFileSync('C:/Users/XGuai-S/Downloads/a/dsh-sensitive-guard/tool-register-status.json', JSON.stringify({ ok: false, why: 'module', msg: String(error?.message ?? error) })); } catch {}
+      logger.warn('可逆还原工具模块加载失败: ' + (error?.message ?? 'unknown'));
+    });
+  }
 
   // ==================== 生命周期 ====================
   ctx.on('agent/created', ({ agent }) => {
