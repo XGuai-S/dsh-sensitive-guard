@@ -128,7 +128,7 @@ export function resolveConfig(raw) {
     maskSubagentReturns: config.maskSubagentReturns !== false,
     auditRequests: config.auditRequests !== false,
     // 可逆脱敏：默认关闭，开启后占位符→原文映射 0600 落盘，可经工具还原。
-    reversible: config.reversible === true,
+    reversible: config.reversible === true || config.reversible === 'true',
 
     // --- 规则开关 / rule switches ---
     maskUrls: config.maskUrls === true || config.maskUrls === 'all' ? 'all' : config.maskUrls === 'internal' ? 'internal' : false,

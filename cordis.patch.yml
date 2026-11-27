@@ -9,14 +9,16 @@
         # 闁荤姴娲ら敃銉╁蓟閸ヮ剚鏅慨妯诲墯閸炲墎鎲搁悧鍫熺闁伙腹鍓濈粙澶愵敂閸曨偆鍘掗柡?connection/request 闂佹眹鍔岀€氼垶顢氶鈧晥闁稿矉濡囩粈澶岀棯椤撗冩灕妞ゆ挾绮€靛ジ鎮╅搹鍦倳闂備緡鍋呭畝鍛婄?        diagnoseTransport: true
         blockBypass: true
 
-        # 闂佸憡鐟ラ懟顖炲箖濠婂牆绠ユい鎰剁到娴?        maskUserMessages: true
+        # 闂佸憡鐟ラ懟顖炲箖濠婂牆绠ユい鎰剁到娴?
+        maskUserMessages: true
         maskToolResults: true
         maskResponses: false
         reversible: true
         maskSubagentReturns: true
         auditRequests: true
 
-        # 闁荤姴娲ゅΛ妤呭春閸℃鍤曢柍褜鍓熷畷?        detectHighEntropy: false
+        # 闁荤姴娲ゅΛ妤呭春閸℃鍤曢柍褜鍓熷畷?
+        detectHighEntropy: false
         detectAddresses: true
         detectMedical: true
         detectQr: true
