@@ -36,5 +36,17 @@ const ctx2 = { config: config2, disabledRules: config2.disabledRulesSet, registr
 runSanitize(text, buildFullRules(config2), ctx2);
 check('reversible=false 不记录', store2.size, 0);
 
+// 跨多次扫描共享同一 store（模拟 per-session context）：映射累积、可还原。
+const sharedStore = createRestoreStore('shared-store-test');
+const sharedCtx = { config, disabledRules: config.disabledRulesSet, registry: createRegistry(), restoreStore: sharedStore };
+const r1 = runSanitize('手机号 13712345678', rules, sharedCtx);
+const r2 = runSanitize('邮箱 shared@example.com', rules, sharedCtx);
+const p1 = r1.hits.find((h) => h.ruleId === 'cn-mobile')?.placeholder;
+const p2 = r2.hits.find((h) => h.ruleId === 'email')?.placeholder;
+check('共享 store 累积两条映射', sharedStore.size >= 2, true);
+const both = sharedStore.restore([p1, p2].filter(Boolean));
+check('跨扫描还原手机号', both[p1] === '13712345678', true);
+check('跨扫描还原邮箱', both[p2] === 'shared@example.com', true);
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

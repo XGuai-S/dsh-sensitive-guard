@@ -192,13 +192,27 @@ export function apply(ctx, rawConfig) {
   const ocrRules = OCR_RULES.filter((rule) => !config.disabledRulesSet.has(rule.id));
   const state = new SessionState(config);
   const logger = new GuardLogger(config, ctx.logger);
-  const contextFor = (sessionId) => ({
-    config,
-    disabledRules: config.disabledRulesSet,
-    registry: createRegistry(),
-    restoreStore: config.reversible ? createRestoreStore(sessionId) : undefined,
-    sessionId,
-  });
+  // 每会话共享一个 context（registry + restoreStore 都持久），对齐 dsh-mask 的
+  // stripperFor(sessionId) 模型：同一会话所有脱敏路径共用同一占位符注册表与恢复表，
+  // 脱敏即记录，映射落盘可跨请求/重启还原。旧实现每次 contextFor() 都新建对象，
+  // 导致映射不共享、还原表永不落盘。
+  const sessionContexts = new Map();
+  const contextFor = (sessionId) => {
+    const key = sessionId ?? 'default';
+    let entry = sessionContexts.get(key);
+    if (entry === undefined) {
+      const restoreStore = config.reversible ? createRestoreStore(key) : undefined;
+      entry = {
+        config,
+        disabledRules: config.disabledRulesSet,
+        registry: createRegistry(),
+        restoreStore,
+        sessionId: key,
+      };
+      sessionContexts.set(key, entry);
+    }
+    return entry;
+  };
 
   /** 把一次扫描结果记入日志并按需告警 / Log one result and alert when due. */
   const publish = (result, source, rawText) => {
@@ -502,6 +516,49 @@ export function apply(ctx, rawConfig) {
       // 回传扫描失败不得影响子代理结果。
     }
   });
+
+  // ==================== 5. 可逆还原命令 ====================
+  // 对齐 dsh-mask：/sensitive_restore <占位符...> 把本会话的占位符还原为原文，
+  // 原文写入本机 0600 文件，命令结果只回文件路径（明文绝不进会话日志/模型）。
+  if (config.reversible) {
+    ctx.inject(['commands'], (cmdCtx) => {
+      const commands = cmdCtx.commands;
+      if (commands === undefined || typeof commands.register !== 'function') return;
+      const dispose = commands.register({
+        name: 'sensitive_restore',
+        description: '把脱敏占位符还原为本会话的真实值，写入本机 0600 文件，只返回路径。用法：/sensitive_restore {{PHONE_NO}} {{EMAIL_ADDR}}',
+        input: { hint: '[{{PHONE_NO}} {{EMAIL_ADDR}} ...]' },
+        recordInput: false,
+        async handler(invocation) {
+          const agent = invocation?.agent;
+          const sessionId = agent?.session?.id ?? agent?.id ?? 'default';
+          const raw = invocation?.rawInput ?? '';
+          const placeholders = [...raw.matchAll(/\{\{[A-Z_]+\d*\}\}/g)].map((m) => m[0]);
+          const entry = sessionContexts.get(sessionId) ?? contextFor(sessionId);
+          const store = entry.restoreStore;
+          if (store === undefined) {
+            return { kind: 'error', text: 'sensitive_restore: 可逆脱敏未启用' };
+          }
+          if (placeholders.length === 0) {
+            return { kind: 'error', text: 'sensitive_restore: 用法 /sensitive_restore {{PHONE_NO}} —— 传入要还原的占位符' };
+          }
+          const restored = store.restore(placeholders);
+          const found = Object.keys(restored);
+          if (found.length === 0) {
+            return { kind: 'success', text: 'sensitive_restore: 本会话没有这些占位符的映射，未还原任何内容。' };
+          }
+          const lines = found.map((p) => `${p} = ${restored[p]}`);
+          const file = writeRestoreFile(lines.join('\n'), sessionId);
+          return {
+            kind: 'success',
+            text: `sensitive_restore: 已还原 ${found.length} 个占位符。\n明文在文件(0600): ${file}\n（明文不在命令结果里，也不进会话日志；用 read 工具打开该文件获取。）`,
+          };
+        },
+      });
+      cmdCtx.effect(() => () => { try { dispose?.(); } catch {} }, 'sensitive-guard: restore command');
+      logger.info('✅ 可逆还原命令已注册 /sensitive_restore');
+    });
+  }
 
   // ==================== 生命周期 ====================
   ctx.on('agent/created', ({ agent }) => {
